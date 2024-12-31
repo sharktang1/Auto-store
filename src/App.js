@@ -4,38 +4,37 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Auth from './auth/Auth';
-import Dashboard from './admin/Admin-Dashboard';
+import AdminDashboard from './admin/Admin-Dashboard';
+import StaffDashboard from './staff/Staff-Dashboard';
 import SetupPopup from './components/SetupPopup';
+import StaffSetupPopup from './components/StaffSetupPopup';
 import InventoryPage from './admin/inventory/InventoryPage';
+import { getInitialTheme } from './utils/theme';
 
 function App() {
-  const [showSetup, setShowSetup] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [showAdminSetup, setShowAdminSetup] = useState(false);
+  const [showStaffSetup, setShowStaffSetup] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
 
-  const checkSetupStatus = () => {
-    const hasCompletedSetup = localStorage.getItem('hasCompletedSetup');
-    return !hasCompletedSetup;
+  const checkSetupStatus = (type) => {
+    const key = type === 'admin' ? 'adminSetupCompleted' : 'staffSetupCompleted';
+    return !localStorage.getItem(key);
   };
 
-  const handleSetupSubmit = (formData) => {
-    localStorage.setItem('hasCompletedSetup', 'true');
+  const handleAdminSetupSubmit = (formData) => {
+    localStorage.setItem('adminSetupCompleted', 'true');
     localStorage.setItem('businessSetup', JSON.stringify(formData));
-    
-    toast.success('Setup completed successfully! Welcome to AutoStore.', {
-      position: "top-right",
-      autoClose: 5000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      progress: undefined,
+    toast.success('Admin setup completed successfully!', {
       theme: isDarkMode ? 'dark' : 'light',
     });
   };
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
+  const handleStaffSetupSubmit = (formData) => {
+    localStorage.setItem('staffSetupCompleted', 'true');
+    localStorage.setItem('staffSetup', JSON.stringify(formData));
+    toast.success('Staff setup completed successfully!', {
+      theme: isDarkMode ? 'dark' : 'light',
+    });
   };
 
   return (
@@ -44,40 +43,43 @@ function App() {
         <ToastContainer
           position="top-right"
           autoClose={5000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
           theme={isDarkMode ? 'dark' : 'light'}
         />
 
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route
-            path="/dashboard"
+            path="/admin/dashboard"
             element={
               <>
-                <Dashboard
-                  isDarkMode={isDarkMode}
-                  toggleTheme={toggleTheme}
-                  onSetupClick={() => setShowSetup(true)}
+                <AdminDashboard
+                  onSetupClick={() => setShowAdminSetup(true)}
                 />
                 <SetupPopup
-                  isOpen={showSetup || checkSetupStatus()}
-                  onClose={() => setShowSetup(false)}
-                  onSubmit={handleSetupSubmit}
-                  isDarkMode={isDarkMode}
+                  isOpen={showAdminSetup || checkSetupStatus('admin')}
+                  onClose={() => setShowAdminSetup(false)}
+                  onSubmit={handleAdminSetupSubmit}
                 />
               </>
             }
           />
           <Route
-            path="/admin/inventory"
-            element={<InventoryPage />}
+            path="/staff/dashboard"
+            element={
+              <>
+                <StaffDashboard
+                  onSetupClick={() => setShowStaffSetup(true)}
+                />
+                <StaffSetupPopup
+                  isOpen={showStaffSetup || checkSetupStatus('staff')}
+                  onClose={() => setShowStaffSetup(false)}
+                  onSubmit={handleStaffSetupSubmit}
+                />
+              </>
+            }
           />
+          <Route path="/admin/inventory" element={<InventoryPage />} />
+          <Route path="/staff/inventory" element={<InventoryPage isStaff />} />
           <Route path="/" element={<Auth />} />
         </Routes>
       </div>

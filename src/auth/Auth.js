@@ -1,16 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User, Mail, Lock, Sun, Moon, UserCircle } from 'lucide-react';
-import { getInitialTheme, setTheme, initializeThemeListener } from '../utils/theme';
 import { useNavigate } from 'react-router-dom';
+import { auth, db } from '../libs/firebase-config.mjs';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  updateProfile 
+} from 'firebase/auth';
+import { 
+  doc, 
+  setDoc, 
+  getDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs 
+} from 'firebase/firestore';
+import { getInitialTheme, setTheme, initializeThemeListener } from '../utils/theme';
+import { toast } from 'react-toastify';
 
 const Auth = () => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
   const [isLogin, setIsLogin] = useState(true);
   const [isAdmin, setIsAdmin] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   
-  // Form state
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -35,21 +51,103 @@ const Auth = () => {
     }));
   };
 
+  const checkAdminExists = async () => {
+    const adminQuery = query(
+      collection(db, 'users'),
+      where('role', '==', 'admin')
+    );
+    const querySnapshot = await getDocs(adminQuery);
+    return !querySnapshot.empty;
+  };
+
+  const handleSignup = async () => {
+    try {
+      if (isAdmin) {
+        const adminExists = await checkAdminExists();
+        if (adminExists) {
+          toast.error('An admin account already exists');
+          return;
+        }
+      }
+  
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password
+      );
+  
+      await updateProfile(userCredential.user, {
+        displayName: formData.username,
+      });
+  
+      const userDoc = doc(db, 'users', userCredential.user.uid);
+      await setDoc(userDoc, {
+        username: formData.username,
+        email: formData.email,
+        role: isAdmin ? 'admin' : 'staff',
+        createdAt: new Date().toISOString(),
+      });
+  
+      if (isAdmin) {
+        const globalDoc = doc(db, 'config', 'global');
+        await setDoc(globalDoc, { hasAdmin: true }, { merge: true });
+      }
+  
+      toast.success(`${isAdmin ? 'Admin' : 'Staff'} account created successfully`);
+      navigate(isAdmin ? '/admin/dashboard' : '/staff/dashboard');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+  
+  
+
+  const handleLogin = async () => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password
+      );
+
+      const userDoc = doc(db, 'users', userCredential.user.uid);
+      const userSnap = await getDoc(userDoc);
+
+      if (!userSnap.exists()) {
+        toast.error('User data not found');
+        return;
+      }
+
+      const userData = userSnap.data();
+      if (isAdmin && userData.role !== 'admin') {
+        toast.error('Access denied. Not an admin account.');
+        return;
+      }
+
+      if (!isAdmin && userData.role !== 'staff') {
+        toast.error('Access denied. Not a staff account.');
+        return;
+      }
+
+      toast.success(`Welcome back, ${userData.username}!`);
+      navigate(isAdmin ? '/admin/dashboard' : '/staff/dashboard');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
     
-    // Here you would typically make an API call to handle authentication
-    console.log('Form submitted:', {
-      type: isLogin ? 'login' : 'signup',
-      role: isAdmin ? 'admin' : 'staff',
-      ...formData
-    });
-
-    // Mock successful login/signup
-    if (isAdmin) {
-      navigate('/admin/dashboard');
-    } else {
-      navigate('/staff/dashboard');
+    try {
+      if (isLogin) {
+        await handleLogin();
+      } else {
+        await handleSignup();
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -127,36 +225,16 @@ const Auth = () => {
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                {/* Username Input */}
-                <div className="relative">
-                  <User className={`absolute left-3 top-3 
-                    ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
-                  <input
-                    type="text"
-                    name="username"
-                    value={formData.username}
-                    onChange={handleInputChange}
-                    placeholder="Username"
-                    required
-                    className={`w-full pl-10 pr-4 py-2 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-transparent
-                      ${isDarkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} 
-                      border transition-colors duration-300`}
-                  />
-                </div>
-
-                {/* Email Input (Sign Up only) */}
                 {!isLogin && (
                   <div className="relative">
-                    <Mail className={`absolute left-3 top-3 
+                    <User className={`absolute left-3 top-3 
                       ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
                     <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
+                      type="text"
+                      name="username"
+                      value={formData.username}
                       onChange={handleInputChange}
-                      placeholder="Email"
+                      placeholder="Username"
                       required
                       className={`w-full pl-10 pr-4 py-2 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-transparent
                         ${isDarkMode 
@@ -167,7 +245,24 @@ const Auth = () => {
                   </div>
                 )}
 
-                {/* Password Input */}
+                <div className="relative">
+                  <Mail className={`absolute left-3 top-3 
+                    ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    placeholder="Email"
+                    required
+                    className={`w-full pl-10 pr-4 py-2 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-transparent
+                      ${isDarkMode 
+                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} 
+                      border transition-colors duration-300`}
+                  />
+                </div>
+
                 <div className="relative">
                   <Lock className={`absolute left-3 top-3 
                     ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
@@ -187,17 +282,18 @@ const Auth = () => {
                 </div>
               </div>
 
-              {/* Submit Button */}
               <motion.button
                 type="submit"
+                disabled={isLoading}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="w-full bg-orange-500 text-white py-2 rounded-md hover:bg-orange-600 transition-colors duration-300"
+                className={`w-full ${isLoading ? 'bg-orange-400' : 'bg-orange-500'} 
+                  text-white py-2 rounded-md hover:bg-orange-600 transition-colors duration-300
+                  ${isLoading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
               >
-                {isLogin ? 'Login' : 'Sign Up'}
+                {isLoading ? 'Processing...' : (isLogin ? 'Login' : 'Sign Up')}
               </motion.button>
 
-              {/* Toggle Login/Signup */}
               <p className={`text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                 {isLogin ? "Don't have an account? " : "Already have an account? "}
                 <button
