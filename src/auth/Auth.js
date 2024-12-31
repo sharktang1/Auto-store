@@ -1,15 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User, Mail, Lock, Sun, Moon, UserCircle } from 'lucide-react';
+import { getInitialTheme, setTheme, initializeThemeListener } from '../utils/theme';
+import { useNavigate } from 'react-router-dom';
 
 const Auth = () => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
   const [isLogin, setIsLogin] = useState(true);
   const [isAdmin, setIsAdmin] = useState(true);
+  const navigate = useNavigate();
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: ''
+  });
+
+  useEffect(() => {
+    initializeThemeListener(setIsDarkMode);
+  }, []);
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
+    const newTheme = !isDarkMode;
+    setIsDarkMode(newTheme);
+    setTheme(newTheme);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Here you would typically make an API call to handle authentication
+    console.log('Form submitted:', {
+      type: isLogin ? 'login' : 'signup',
+      role: isAdmin ? 'admin' : 'staff',
+      ...formData
+    });
+
+    // Mock successful login/signup
+    if (isAdmin) {
+      navigate('/admin/dashboard');
+    } else {
+      navigate('/staff/dashboard');
+    }
   };
 
   return (
@@ -34,7 +75,7 @@ const Auth = () => {
         </div>
       </div>
 
-      {/* Main Content - Centered */}
+      {/* Main Content */}
       <div className="flex-grow flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
           <div className={`rounded-lg shadow-lg p-8 transition-colors duration-300 
@@ -84,7 +125,7 @@ const Auth = () => {
             </h2>
 
             {/* Form */}
-            <form className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 {/* Username Input */}
                 <div className="relative">
@@ -92,7 +133,11 @@ const Auth = () => {
                     ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
                   <input
                     type="text"
+                    name="username"
+                    value={formData.username}
+                    onChange={handleInputChange}
                     placeholder="Username"
+                    required
                     className={`w-full pl-10 pr-4 py-2 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-transparent
                       ${isDarkMode 
                         ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
@@ -108,7 +153,11 @@ const Auth = () => {
                       ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
                     <input
                       type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
                       placeholder="Email"
+                      required
                       className={`w-full pl-10 pr-4 py-2 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-transparent
                         ${isDarkMode 
                           ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
@@ -124,7 +173,11 @@ const Auth = () => {
                     ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
                   <input
                     type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
                     placeholder="Password"
+                    required
                     className={`w-full pl-10 pr-4 py-2 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-transparent
                       ${isDarkMode 
                         ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
@@ -136,6 +189,7 @@ const Auth = () => {
 
               {/* Submit Button */}
               <motion.button
+                type="submit"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className="w-full bg-orange-500 text-white py-2 rounded-md hover:bg-orange-600 transition-colors duration-300"
@@ -147,10 +201,8 @@ const Auth = () => {
               <p className={`text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                 {isLogin ? "Don't have an account? " : "Already have an account? "}
                 <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setIsLogin(!isLogin);
-                  }}
+                  type="button"
+                  onClick={() => setIsLogin(!isLogin)}
                   className="text-orange-500 hover:text-orange-600 hover:underline"
                 >
                   {isLogin ? 'Sign Up' : 'Login'}

@@ -10,13 +10,10 @@ function App() {
   const [showSetup, setShowSetup] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Check if it's the user's first visit
-  useEffect(() => {
+  const checkSetupStatus = () => {
     const hasCompletedSetup = localStorage.getItem('hasCompletedSetup');
-    if (!hasCompletedSetup) {
-      setShowSetup(true);
-    }
-  }, []);
+    return !hasCompletedSetup;
+  };
 
   const handleSetupSubmit = (formData) => {
     // Handle the setup data
@@ -57,31 +54,32 @@ function App() {
           theme={isDarkMode ? 'dark' : 'light'}
         />
 
-        <SetupPopup
-          isOpen={showSetup}
-          onClose={() => setShowSetup(false)}
-          onSubmit={handleSetupSubmit}
-          isDarkMode={isDarkMode}
-        />
-
         <Routes>
-          <Route 
-            path="/auth" 
-            element={<Auth />} 
+          <Route
+            path="/auth"
+            element={<Auth />}
           />
-          <Route 
-            path="/dashboard" 
+          <Route
+            path="/dashboard"
             element={
-              <Dashboard 
-                isDarkMode={isDarkMode} 
-                toggleTheme={toggleTheme}
-                onSetupClick={() => setShowSetup(true)}
-              />
-            } 
+              <>
+                <Dashboard
+                  isDarkMode={isDarkMode}
+                  toggleTheme={toggleTheme}
+                  onSetupClick={() => setShowSetup(true)}
+                />
+                <SetupPopup
+                  isOpen={showSetup || checkSetupStatus()}
+                  onClose={() => setShowSetup(false)}
+                  onSubmit={handleSetupSubmit}
+                  isDarkMode={isDarkMode}
+                />
+              </>
+            }
           />
-          <Route 
-            path="/" 
-            element={<Auth />} 
+          <Route
+            path="/"
+            element={<Auth />}
           />
         </Routes>
       </div>

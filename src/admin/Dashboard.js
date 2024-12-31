@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { Package, DollarSign, Users, TrendingUp, ShoppingCart, UserCheck, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import Navbar from '../components/Navbar';
+import { getInitialTheme } from '../utils/theme';
 
 const sampleSalesData = [
   { name: 'Jan', value: 400 },
@@ -32,26 +33,24 @@ const sampleStaffData = [
 const COLORS = ['#f97316', '#3b82f6', '#a855f7', '#10b981'];
 
 // DashboardCard Component
-const DashboardCard = ({ title, value, icon: Icon, color, to }) => {
-  return (
-    <motion.div
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      className="cursor-pointer"
-      onClick={() => window.location.href = to}
-    >
-      <div className={`p-6 rounded-lg shadow-md ${color} h-full`}>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-white text-sm mb-1 opacity-90">{title}</p>
-            <h3 className="text-white text-2xl font-bold">{value}</h3>
-          </div>
-          <Icon className="text-white opacity-80" size={24} />
+const DashboardCard = ({ title, value, icon: Icon, color, to }) => (
+  <motion.div
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+    className="cursor-pointer"
+    onClick={() => window.location.href = to}
+  >
+    <div className={`p-6 rounded-lg shadow-md ${color} h-full`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-white text-sm mb-1 opacity-90">{title}</p>
+          <h3 className="text-white text-2xl font-bold">{value}</h3>
         </div>
+        <Icon className="text-white opacity-80" size={24} />
       </div>
-    </motion.div>
-  );
-};
+    </div>
+  </motion.div>
+);
 
 // ActivityItem Component
 const ActivityItem = ({ icon: Icon, title, description, time, to, isDarkMode }) => (
@@ -79,111 +78,112 @@ const ActivityItem = ({ icon: Icon, title, description, time, to, isDarkMode }) 
   </Link>
 );
 
-const StatsPreviewCard = ({ isDarkMode }) => {
-  return (
-    <motion.div
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} cursor-pointer`}
-      onClick={() => window.location.href = '/stats'}
-    >
-      <div className="grid grid-cols-2 gap-4">
-        {/* Sales Mini Chart */}
-        <div className="h-32">
-          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Sales Trend
-          </h3>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={sampleSalesData.slice(-4)} barSize={8}>
-              <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+const StatsPreviewCard = ({ isDarkMode }) => (
+  <motion.div
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+    className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} cursor-pointer`}
+    onClick={() => window.location.href = '/stats'}
+  >
+    <div className="grid grid-cols-2 gap-4">
+      <div className="h-32">
+        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          Sales Trend
+        </h3>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={sampleSalesData.slice(-4)} barSize={8}>
+            <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
 
-        {/* Inventory Distribution */}
-        <div className="h-32">
-          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Inventory Mix
-          </h3>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={sampleInventoryData}
-                innerRadius={25}
-                outerRadius={40}
-                paddingAngle={2}
-                dataKey="value"
-              >
-                {sampleInventoryData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="h-32">
+        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          Inventory Mix
+        </h3>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={sampleInventoryData}
+              innerRadius={25}
+              outerRadius={40}
+              paddingAngle={2}
+              dataKey="value"
+            >
+              {sampleInventoryData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
 
-        {/* Staff Performance */}
-        <div className="h-32">
-          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Staff Performance
-          </h3>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={sampleStaffData}>
-              <Line
-                type="monotone"
-                dataKey="performance"
-                stroke="#a855f7"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="h-32">
+        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          Staff Performance
+        </h3>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={sampleStaffData}>
+            <Line
+              type="monotone"
+              dataKey="performance"
+              stroke="#a855f7"
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
 
-        {/* Quick Stats */}
-        <div className={`h-32 p-4 rounded-lg bg-opacity-10 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Key Metrics
-          </h3>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Growth Rate</span>
-              <span className={`text-xs font-medium ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>+15.8%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Conversion</span>
-              <span className={`text-xs font-medium ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>4.2%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Order</span>
-              <span className={`text-xs font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>$85.30</span>
-            </div>
+      <div className={`h-32 p-4 rounded-lg bg-opacity-10 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          Key Metrics
+        </h3>
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Growth Rate</span>
+            <span className={`text-xs font-medium ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>+15.8%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Conversion</span>
+            <span className={`text-xs font-medium ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>4.2%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Order</span>
+            <span className={`text-xs font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>$85.30</span>
           </div>
         </div>
       </div>
+    </div>
 
-      <div className="mt-4 flex justify-between items-center">
-        <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          Click to view detailed statistics
-        </span>
-        <ArrowRight className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} size={16} />
-      </div>
-    </motion.div>
-  );
-};
+    <div className="mt-4 flex justify-between items-center">
+      <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        Click to view detailed statistics
+      </span>
+      <ArrowRight className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} size={16} />
+    </div>
+  </motion.div>
+);
 
 const Dashboard = () => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Get initial theme state from the utility function
+  const isDarkMode = getInitialTheme();
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
+  // Mock user data - in a real app, this would come from your auth context or state management
+  const userData = {
+    username: "John Doe",
+    email: "john@example.com",
+    isAdmin: true
   };
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
       <div className="fixed top-0 left-0 right-0 z-50">
-        <Navbar isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+        <Navbar
+          username={userData.username}
+          email={userData.email}
+          isAdmin={userData.isAdmin}
+        />
       </div>
       
       <div className="container mx-auto px-4 pt-24 pb-8">

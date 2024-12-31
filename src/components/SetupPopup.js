@@ -1,13 +1,35 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Store, MapPin, Building } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { getInitialTheme } from '../utils/theme';
 
-const SetupPopup = ({ isOpen, onClose, isDarkMode, onSubmit }) => {
+const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
+  const isDarkMode = getInitialTheme();
   const [formData, setFormData] = useState({
     businessName: '',
     numberOfStores: '1',
     locations: ['']
   });
+
+  const isFormValid = () => {
+    return (
+      formData.businessName.trim() !== '' &&
+      formData.locations.every(location => location.trim() !== '')
+    );
+  };
+
+  const handleClose = () => {
+    if (!isFormValid()) {
+      toast.error('Please complete the setup form before closing', {
+        position: "top-right",
+        autoClose: 3000,
+        theme: isDarkMode ? 'dark' : 'light'
+      });
+      return;
+    }
+    onClose();
+  };
 
   const handleLocationChange = (index, value) => {
     const newLocations = [...formData.locations];
@@ -29,7 +51,20 @@ const SetupPopup = ({ isOpen, onClose, isDarkMode, onSubmit }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!isFormValid()) {
+      toast.error('Please fill in all required fields', {
+        position: "top-right",
+        autoClose: 3000,
+        theme: isDarkMode ? 'dark' : 'light'
+      });
+      return;
+    }
     onSubmit(formData);
+    toast.success('Setup completed successfully!', {
+      position: "top-right",
+      autoClose: 3000,
+      theme: isDarkMode ? 'dark' : 'light'
+    });
     onClose();
   };
 
@@ -46,7 +81,7 @@ const SetupPopup = ({ isOpen, onClose, isDarkMode, onSubmit }) => {
             }`}
           >
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className={`absolute top-4 right-4 p-1 rounded-full hover:bg-opacity-10 ${
                 isDarkMode ? 'hover:bg-white' : 'hover:bg-gray-900'
               }`}
