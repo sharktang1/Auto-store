@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+// App.js
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Auth from './auth/Auth';
-import Dashboard from './admin/Dashboard';
+import Dashboard from './admin/Admin-Dashboard';
 import SetupPopup from './components/SetupPopup';
+import InventoryPage from './admin/inventory/InventoryPage';
 
 function App() {
   const [showSetup, setShowSetup] = useState(false);
@@ -16,11 +18,9 @@ function App() {
   };
 
   const handleSetupSubmit = (formData) => {
-    // Handle the setup data
     localStorage.setItem('hasCompletedSetup', 'true');
     localStorage.setItem('businessSetup', JSON.stringify(formData));
     
-    // Show success message
     toast.success('Setup completed successfully! Welcome to AutoStore.', {
       position: "top-right",
       autoClose: 5000,
@@ -55,10 +55,7 @@ function App() {
         />
 
         <Routes>
-          <Route
-            path="/auth"
-            element={<Auth />}
-          />
+          <Route path="/auth" element={<Auth />} />
           <Route
             path="/dashboard"
             element={
@@ -78,9 +75,10 @@ function App() {
             }
           />
           <Route
-            path="/"
-            element={<Auth />}
+            path="/admin/inventory"
+            element={<InventoryPage />}
           />
+          <Route path="/" element={<Auth />} />
         </Routes>
       </div>
     </Router>

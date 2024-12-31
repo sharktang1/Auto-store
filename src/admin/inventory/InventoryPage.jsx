@@ -1,0 +1,129 @@
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Plus, Store } from 'lucide-react';
+import Navbar from '../../components/Navbar';
+import UpdateInventory from './UpdateInventory';
+import ViewInventory from './ViewInventory';
+import { initializeThemeListener, getInitialTheme } from '../../utils/theme';
+import { initializeInventory } from '../../utils/admin-inventory';
+
+const InventoryPage = () => {
+  const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
+  const [isUpdateMode, setIsUpdateMode] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedStore, setSelectedStore] = useState('all');
+  const [stores, setStores] = useState([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    // Initialize theme listener and inventory
+    const cleanup = initializeThemeListener(setIsDarkMode);
+    initializeInventory();
+
+    // Get stores from localStorage
+    const businessSetup = JSON.parse(localStorage.getItem('businessSetup') || '{}');
+    const storeLocations = businessSetup.locations || [];
+    setStores(storeLocations.map((location, index) => ({
+      id: `store-${index + 1}`,
+      name: `Duka ${index + 1}`,
+      location
+    })));
+
+    return cleanup;
+  }, []);
+
+  const handleEditItem = (item) => {
+    setSelectedItem(item);
+    setIsUpdateMode(true);
+  };
+
+  const handleInventoryUpdate = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  return (
+    <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
+      <div className="fixed top-0 left-0 right-0 z-50">
+        <Navbar />
+      </div>
+
+      <div className="container mx-auto px-4 pt-24 pb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Inventory Management
+          </h1>
+
+          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+            <div className="relative">
+              <Store className={`absolute left-3 top-1/2 -translate-y-1/2 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`} size={20} />
+              <select
+                value={selectedStore}
+                onChange={(e) => setSelectedStore(e.target.value)}
+                className={`pl-10 pr-4 py-2 rounded-lg border appearance-none ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
+              >
+                <option value="all">All Stores</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name} - {store.location}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                setSelectedItem(null);
+                setIsUpdateMode(!isUpdateMode);
+              }}
+              className={`flex items-center px-4 py-2 rounded-lg ${
+                isUpdateMode
+                  ? 'bg-gray-500 hover:bg-gray-600'
+                  : 'bg-blue-500 hover:bg-blue-600'
+              } text-white`}
+            >
+              {isUpdateMode ? (
+                <>View Inventory</>
+              ) : (
+                <>
+                  <Plus size={20} className="mr-2" />
+                  Add New Item
+                </>
+              )}
+            </motion.button>
+          </div>
+        </div>
+
+        {isUpdateMode ? (
+          <UpdateInventory
+            item={selectedItem}
+            selectedStore={selectedStore}
+            onClose={() => {
+              setIsUpdateMode(false);
+              setSelectedItem(null);
+            }}
+            onInventoryUpdate={handleInventoryUpdate}
+            isDarkMode={isDarkMode}
+          />
+        ) : (
+          <ViewInventory
+            key={refreshTrigger} // Force re-render when inventory updates
+            onEditItem={handleEditItem}
+            selectedStore={selectedStore}
+            onInventoryUpdate={handleInventoryUpdate}
+            isDarkMode={isDarkMode}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default InventoryPage;

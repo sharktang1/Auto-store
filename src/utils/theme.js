@@ -1,34 +1,33 @@
 // theme.js
 const THEME_KEY = 'autostore-theme';
+const THEME_CHANGE_EVENT = 'theme-change';
 
 export const getInitialTheme = () => {
-  // Check if theme exists in localStorage
   const savedTheme = localStorage.getItem(THEME_KEY);
   if (savedTheme) {
     return savedTheme === 'dark';
   }
   
-  // If no saved theme, check user's system preferences
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     return true;
   }
   
-  // Default to light mode
   return false;
 };
 
 export const setTheme = (isDark) => {
   localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
   
-  // Update document class for Tailwind dark mode
   if (isDark) {
     document.documentElement.classList.add('dark');
   } else {
     document.documentElement.classList.remove('dark');
   }
+
+  // Dispatch custom event for theme change
+  window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { isDark } }));
 };
 
-// Optional: Add theme change listener
 export const initializeThemeListener = (setIsDarkMode) => {
   // Listen for system theme changes
   if (window.matchMedia) {
@@ -39,4 +38,16 @@ export const initializeThemeListener = (setIsDarkMode) => {
         setTheme(newTheme);
       });
   }
+
+  // Listen for custom theme changes
+  window.addEventListener(THEME_CHANGE_EVENT, (e) => {
+    setIsDarkMode(e.detail.isDark);
+  });
+
+  // Clean up function to remove event listener
+  return () => {
+    window.removeEventListener(THEME_CHANGE_EVENT, (e) => {
+      setIsDarkMode(e.detail.isDark);
+    });
+  };
 };

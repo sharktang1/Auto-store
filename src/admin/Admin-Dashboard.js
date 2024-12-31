@@ -1,11 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Package, DollarSign, Users, TrendingUp, ShoppingCart, UserCheck, ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { 
+  Package, 
+  DollarSign, 
+  Users, 
+  TrendingUp, 
+  ShoppingCart, 
+  UserCheck, 
+  ArrowRight 
+} from 'lucide-react';
+import { useNavigate , Link} from 'react-router-dom';
+import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import Navbar from '../components/Navbar';
-import { getInitialTheme } from '../utils/theme';
+import { getInitialTheme, initializeThemeListener } from '../utils/theme';
 
+// Sample data for charts
 const sampleSalesData = [
   { name: 'Jan', value: 400 },
   { name: 'Feb', value: 300 },
@@ -22,35 +31,30 @@ const sampleInventoryData = [
   { name: 'Books', value: 20 },
 ];
 
-const sampleStaffData = [
-  { name: 'Mon', performance: 85 },
-  { name: 'Tue', performance: 92 },
-  { name: 'Wed', performance: 88 },
-  { name: 'Thu', performance: 95 },
-  { name: 'Fri', performance: 90 },
-];
-
 const COLORS = ['#f97316', '#3b82f6', '#a855f7', '#10b981'];
 
-// DashboardCard Component
-const DashboardCard = ({ title, value, icon: Icon, color, to }) => (
-  <motion.div
-    whileHover={{ scale: 1.02 }}
-    whileTap={{ scale: 0.98 }}
-    className="cursor-pointer"
-    onClick={() => window.location.href = to}
-  >
-    <div className={`p-6 rounded-lg shadow-md ${color} h-full`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-white text-sm mb-1 opacity-90">{title}</p>
-          <h3 className="text-white text-2xl font-bold">{value}</h3>
+const DashboardCard = ({ title, value, icon: Icon, color, to }) => {
+  const navigate = useNavigate();  // Moved inside the function body
+  
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className="cursor-pointer"
+      onClick={() => navigate(to)}
+    >
+      <div className={`p-6 rounded-lg shadow-md ${color} h-full`}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-white text-sm mb-1 opacity-90">{title}</p>
+            <h3 className="text-white text-2xl font-bold">{value}</h3>
+          </div>
+          <Icon className="text-white opacity-80" size={24} />
         </div>
-        <Icon className="text-white opacity-80" size={24} />
       </div>
-    </div>
-  </motion.div>
-);
+    </motion.div>
+  );
+};
 
 // ActivityItem Component
 const ActivityItem = ({ icon: Icon, title, description, time, to, isDarkMode }) => (
@@ -78,6 +82,7 @@ const ActivityItem = ({ icon: Icon, title, description, time, to, isDarkMode }) 
   </Link>
 );
 
+// StatsPreviewCard Component
 const StatsPreviewCard = ({ isDarkMode }) => (
   <motion.div
     whileHover={{ scale: 1.02 }}
@@ -86,71 +91,56 @@ const StatsPreviewCard = ({ isDarkMode }) => (
     onClick={() => window.location.href = '/stats'}
   >
     <div className="grid grid-cols-2 gap-4">
-      <div className="h-32">
+      {/* Sales Trend Chart */}
+      <div className="h-64">
         <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Sales Trend
         </h3>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={sampleSalesData.slice(-4)} barSize={8}>
+          <BarChart data={sampleSalesData} barSize={8}>
             <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="h-32">
+      <div className="h-64">
         <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Inventory Mix
         </h3>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={sampleInventoryData}
-              innerRadius={25}
-              outerRadius={40}
-              paddingAngle={2}
-              dataKey="value"
-            >
-              {sampleInventoryData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
+        {/* Pie Chart */}
+        <div className="h-1/2">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={sampleInventoryData}
+                innerRadius={25}
+                outerRadius={40}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {sampleInventoryData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
 
-      <div className="h-32">
-        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Staff Performance
-        </h3>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sampleStaffData}>
-            <Line
-              type="monotone"
-              dataKey="performance"
-              stroke="#a855f7"
-              strokeWidth={2}
-              dot={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className={`h-32 p-4 rounded-lg bg-opacity-10 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Key Metrics
-        </h3>
-        <div className="space-y-2">
-          <div className="flex justify-between">
-            <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Growth Rate</span>
-            <span className={`text-xs font-medium ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>+15.8%</span>
-          </div>
-          <div className="flex justify-between">
-            <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Conversion</span>
-            <span className={`text-xs font-medium ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>4.2%</span>
-          </div>
-          <div className="flex justify-between">
-            <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Order</span>
-            <span className={`text-xs font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>$85.30</span>
+        {/* Key Metrics */}
+        <div className={`mt-4 p-4 rounded-lg bg-opacity-10 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Growth Rate</span>
+              <span className={`text-xs font-medium ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>+15.8%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Conversion</span>
+              <span className={`text-xs font-medium ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>4.2%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Order</span>
+              <span className={`text-xs font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>$85.30</span>
+            </div>
           </div>
         </div>
       </div>
@@ -165,11 +155,21 @@ const StatsPreviewCard = ({ isDarkMode }) => (
   </motion.div>
 );
 
+// Main Dashboard Component
 const Dashboard = () => {
-  // Get initial theme state from the utility function
-  const isDarkMode = getInitialTheme();
+  const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
 
-  // Mock user data - in a real app, this would come from your auth context or state management
+  useEffect(() => {
+    // Initialize theme listener and get cleanup function
+    const cleanup = initializeThemeListener(setIsDarkMode);
+    
+    // Clean up event listeners when component unmounts
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, []);
+
+  // Mock user data
   const userData = {
     username: "John Doe",
     email: "john@example.com",
@@ -191,14 +191,15 @@ const Dashboard = () => {
           Dashboard Overview
         </h1>
 
+        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <DashboardCard
-            title="Total Inventory"
-            value="1,234"
-            icon={Package}
-            color="bg-blue-500"
-            to="/inventory"
-          />
+        <DashboardCard
+          title="Total Inventory"
+          value="1,234"
+          icon={Package}
+          color="bg-blue-500"
+          to="/admin/inventory"  // Updated path to match the route
+        />
           <DashboardCard
             title="Total Sales"
             value="$45,678"
@@ -222,9 +223,12 @@ const Dashboard = () => {
           />
         </div>
 
+        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Stats Preview Card */}
           <StatsPreviewCard isDarkMode={isDarkMode} />
 
+          {/* Recent Activity Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
