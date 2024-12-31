@@ -13,10 +13,10 @@ const Auth = () => {
   };
 
   return (
-    <div className={`min-h-screen w-full ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'} transition-colors duration-300`}>
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+    <div className={`min-h-screen w-full flex flex-col ${isDarkMode ? 'dark bg-gray-900' : 'bg-stone-50'} transition-colors duration-300`}>
+      {/* Header */}
+      <div className="container mx-auto px-4 py-4">
+        <div className="flex justify-between items-center">
           <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             AutoStore
           </h1>
@@ -32,11 +32,13 @@ const Auth = () => {
             }
           </motion.button>
         </div>
+      </div>
 
-        {/* Main Content */}
-        <div className="max-w-md mx-auto">
+      {/* Main Content - Centered */}
+      <div className="flex-grow flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md">
           <div className={`rounded-lg shadow-lg p-8 transition-colors duration-300 
-            ${isDarkMode ? 'bg-gray-800 shadow-gray-700' : 'bg-white shadow-gray-200'}`}>
+            ${isDarkMode ? 'bg-gray-800 shadow-gray-700' : 'bg-stone-100 shadow-gray-200'}`}>
             
             {/* Role Toggle */}
             <div className="flex justify-center space-x-4 mb-6">
@@ -49,7 +51,7 @@ const Auth = () => {
                     ? 'bg-orange-500 text-white'
                     : isDarkMode 
                       ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      : 'bg-stone-200 text-gray-700 hover:bg-stone-300'
                 }`}
               >
                 Admin
@@ -63,7 +65,7 @@ const Auth = () => {
                     ? 'bg-orange-500 text-white'
                     : isDarkMode 
                       ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      : 'bg-stone-200 text-gray-700 hover:bg-stone-300'
                 }`}
               >
                 Staff
