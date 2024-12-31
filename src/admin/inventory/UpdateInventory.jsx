@@ -14,7 +14,6 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
     stock: 0,
     ageGroup: '',
     gender: '',
-    description: '',
     storeId: selectedStore
   });
 
@@ -279,24 +278,6 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
               </label>
             ))}
           </div>
-        </div>
-
-        {/* Description */}
-        <div>
-          <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-            Description
-          </label>
-          <textarea
-            value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            className={`w-full p-2 rounded-lg border ${
-              isDarkMode 
-                ? 'bg-gray-700 border-gray-600 text-white' 
-                : 'bg-white border-gray-300'
-            }`}
-            rows="4"
-            required
-          />
         </div>
 
         {/* Form Buttons */}

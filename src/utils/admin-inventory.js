@@ -65,7 +65,6 @@ export const initializeInventory = () => {
           item.name.toLowerCase().includes(searchLower) ||
           item.brand.toLowerCase().includes(searchLower) ||
           item.category.toLowerCase().includes(searchLower) ||
-          item.description?.toLowerCase().includes(searchLower) ||
           item.sizes.some(size => size.toString().includes(searchTerm)) ||
           item.colors.some(color => color.toLowerCase().includes(searchLower))
         );
