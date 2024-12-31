@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Package, DollarSign, Users, BarChart2, TrendingUp, ShoppingCart, UserCheck, ArrowRight } from 'lucide-react';
+import { Package, DollarSign, Users, TrendingUp, ShoppingCart, UserCheck, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import Navbar from '../components/Navbar';
 
-const sampleData = [
+const sampleSalesData = [
   { name: 'Jan', value: 400 },
   { name: 'Feb', value: 300 },
   { name: 'Mar', value: 600 },
@@ -14,6 +14,24 @@ const sampleData = [
   { name: 'Jun', value: 700 },
 ];
 
+const sampleInventoryData = [
+  { name: 'Electronics', value: 35 },
+  { name: 'Clothing', value: 25 },
+  { name: 'Food', value: 20 },
+  { name: 'Books', value: 20 },
+];
+
+const sampleStaffData = [
+  { name: 'Mon', performance: 85 },
+  { name: 'Tue', performance: 92 },
+  { name: 'Wed', performance: 88 },
+  { name: 'Thu', performance: 95 },
+  { name: 'Fri', performance: 90 },
+];
+
+const COLORS = ['#f97316', '#3b82f6', '#a855f7', '#10b981'];
+
+// DashboardCard Component
 const DashboardCard = ({ title, value, icon: Icon, color, to }) => {
   return (
     <motion.div
@@ -35,29 +53,131 @@ const DashboardCard = ({ title, value, icon: Icon, color, to }) => {
   );
 };
 
+// ActivityItem Component
+const ActivityItem = ({ icon: Icon, title, description, time, to, isDarkMode }) => (
+  <Link to={to}>
+    <motion.div 
+      className="flex items-start space-x-3 p-3 rounded-lg cursor-pointer"
+      whileHover={{ 
+        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+        scale: 1.01 
+      }}
+      whileTap={{ scale: 0.99 }}
+    >
+      <div className="bg-orange-100 rounded-full p-2">
+        <Icon className="text-orange-500" size={20} />
+      </div>
+      <div className="flex-grow">
+        <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{title}</p>
+        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{description}</p>
+        <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{time}</p>
+      </div>
+      <div className="flex items-center">
+        <ArrowRight className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={16} />
+      </div>
+    </motion.div>
+  </Link>
+);
+
+const StatsPreviewCard = ({ isDarkMode }) => {
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} cursor-pointer`}
+      onClick={() => window.location.href = '/stats'}
+    >
+      <div className="grid grid-cols-2 gap-4">
+        {/* Sales Mini Chart */}
+        <div className="h-32">
+          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Sales Trend
+          </h3>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={sampleSalesData.slice(-4)} barSize={8}>
+              <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Inventory Distribution */}
+        <div className="h-32">
+          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Inventory Mix
+          </h3>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={sampleInventoryData}
+                innerRadius={25}
+                outerRadius={40}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {sampleInventoryData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Staff Performance */}
+        <div className="h-32">
+          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Staff Performance
+          </h3>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={sampleStaffData}>
+              <Line
+                type="monotone"
+                dataKey="performance"
+                stroke="#a855f7"
+                strokeWidth={2}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Quick Stats */}
+        <div className={`h-32 p-4 rounded-lg bg-opacity-10 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+          <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Key Metrics
+          </h3>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Growth Rate</span>
+              <span className={`text-xs font-medium ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>+15.8%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Conversion</span>
+              <span className={`text-xs font-medium ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>4.2%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Order</span>
+              <span className={`text-xs font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>$85.30</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-between items-center">
+        <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          Click to view detailed statistics
+        </span>
+        <ArrowRight className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} size={16} />
+      </div>
+    </motion.div>
+  );
+};
+
 const Dashboard = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
     document.documentElement.classList.toggle('dark');
-  };
-
-  const CustomBar = (props) => {
-    const { x, y, width, height } = props;
-    return (
-      <g>
-        <rect 
-          x={x} 
-          y={y} 
-          width={width} 
-          height={height} 
-          fill="#f97316"
-          rx={4}
-          className="hover:fill-orange-400 transition-colors duration-200"
-        />
-      </g>
-    );
   };
 
   return (
@@ -103,34 +223,7 @@ const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}
-          >
-            <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              Sales Overview
-            </h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={sampleData} barSize={32}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" stroke={isDarkMode ? '#fff' : '#374151'} />
-                  <YAxis stroke={isDarkMode ? '#fff' : '#374151'} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: isDarkMode ? '#1F2937' : '#fff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
-                    }}
-                    labelStyle={{ color: isDarkMode ? '#fff' : '#374151' }}
-                  />
-                  <Bar dataKey="value" shape={<CustomBar />} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </motion.div>
+          <StatsPreviewCard isDarkMode={isDarkMode} />
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -172,30 +265,5 @@ const Dashboard = () => {
     </div>
   );
 };
-
-const ActivityItem = ({ icon: Icon, title, description, time, to, isDarkMode }) => (
-  <Link to={to}>
-    <motion.div 
-      className="flex items-start space-x-3 p-3 rounded-lg cursor-pointer"
-      whileHover={{ 
-        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-        scale: 1.01 
-      }}
-      whileTap={{ scale: 0.99 }}
-    >
-      <div className="bg-orange-100 rounded-full p-2">
-        <Icon className="text-orange-500" size={20} />
-      </div>
-      <div className="flex-grow">
-        <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{title}</p>
-        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{description}</p>
-        <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{time}</p>
-      </div>
-      <div className="flex items-center">
-        <ArrowRight className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={16} />
-      </div>
-    </motion.div>
-  </Link>
-);
 
 export default Dashboard;
