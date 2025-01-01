@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Store, MapPin, Building } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { getInitialTheme } from '../utils/theme';
+import { getAuth } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../libs/firebase-config';
 
 const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
-  const isDarkMode = getInitialTheme();
   const [formData, setFormData] = useState({
     businessName: '',
     numberOfStores: '1',
@@ -21,11 +22,7 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
 
   const handleClose = () => {
     if (!isFormValid()) {
-      toast.error('Please complete the setup form before closing', {
-        position: "top-right",
-        autoClose: 3000,
-        theme: isDarkMode ? 'dark' : 'light'
-      });
+      toast.error('Please complete the setup form before closing');
       return;
     }
     onClose();
@@ -49,23 +46,38 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
     setFormData({ ...formData, locations: newLocations });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isFormValid()) {
-      toast.error('Please fill in all required fields', {
-        position: "top-right",
-        autoClose: 3000,
-        theme: isDarkMode ? 'dark' : 'light'
-      });
+      toast.error('Please fill in all required fields');
       return;
     }
-    onSubmit(formData);
-    toast.success('Setup completed successfully!', {
-      position: "top-right",
-      autoClose: 3000,
-      theme: isDarkMode ? 'dark' : 'light'
-    });
-    onClose();
+
+    try {
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (!user) {
+        toast.error('You must be logged in to complete setup');
+        return;
+      }
+
+      const businessData = {
+        ...formData,
+        ownerId: user.uid,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'businesses', user.uid), businessData);
+      
+      onSubmit(businessData);
+      toast.success('Business setup completed successfully!');
+      onClose();
+    } catch (error) {
+      console.error('Error saving business data:', error);
+      toast.error('Failed to save business data. Please try again.');
+    }
   };
 
   return (
@@ -76,21 +88,17 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className={`relative w-full max-w-md p-6 rounded-lg shadow-xl ${
-              isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
-            }`}
+            className="relative w-full max-w-md p-6 rounded-lg shadow-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
           >
             <button
               onClick={handleClose}
-              className={`absolute top-4 right-4 p-1 rounded-full hover:bg-opacity-10 ${
-                isDarkMode ? 'hover:bg-white' : 'hover:bg-gray-900'
-              }`}
+              className="absolute top-4 right-4 p-1 rounded-full hover:bg-gray-900 hover:bg-opacity-10 dark:hover:bg-white dark:hover:bg-opacity-10"
             >
               <X size={20} />
             </button>
 
             <h2 className="text-2xl font-bold mb-6">Welcome to AutoStore</h2>
-            <p className={`mb-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            <p className="mb-6 text-gray-600 dark:text-gray-300">
               Let's set up your business profile
             </p>
 
@@ -100,17 +108,13 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
                   Business Name
                 </label>
                 <div className="relative">
-                  <Building className={`absolute left-3 top-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={18} />
+                  <Building className="absolute left-3 top-3 text-gray-500 dark:text-gray-400" size={18} />
                   <input
                     type="text"
                     required
                     value={formData.businessName}
                     onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    className={`pl-10 w-full p-2 rounded-md border ${
-                      isDarkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     placeholder="Enter your business name"
                   />
                 </div>
@@ -121,7 +125,7 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
                   Number of Stores (Duka)
                 </label>
                 <div className="relative">
-                  <Store className={`absolute left-3 top-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={18} />
+                  <Store className="absolute left-3 top-3 text-gray-500 dark:text-gray-400" size={18} />
                   <select
                     value={formData.numberOfStores}
                     onChange={(e) => {
@@ -132,11 +136,7 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
                         locations: Array(newCount).fill('').map((_, i) => formData.locations[i] || '')
                       });
                     }}
-                    className={`pl-10 w-full p-2 rounded-md border ${
-                      isDarkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   >
                     {[1, 2, 3, 4, 5].map(num => (
                       <option key={num} value={num}>Duka {num}</option>
@@ -151,18 +151,14 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
                 </label>
                 {formData.locations.map((location, index) => (
                   <div key={index} className="relative">
-                    <MapPin className={`absolute left-3 top-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={18} />
+                    <MapPin className="absolute left-3 top-3 text-gray-500 dark:text-gray-400" size={18} />
                     <input
                       type="text"
                       required
                       value={location}
                       onChange={(e) => handleLocationChange(index, e.target.value)}
                       placeholder={`Enter location for Duka ${index + 1}`}
-                      className={`pl-10 w-full p-2 rounded-md border ${
-                        isDarkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white'
-                          : 'bg-white border-gray-300 text-gray-900'
-                      }`}
+                      className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                   </div>
                 ))}
@@ -172,8 +168,7 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 type="submit"
-                className="w-full py-2 px-4 bg-orange-500 text-white rounded-md hover:bg-orange-600 
-                  transition-colors duration-200"
+                className="w-full py-2 px-4 bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors duration-200"
               >
                 Complete Setup
               </motion.button>

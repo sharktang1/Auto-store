@@ -1,64 +1,101 @@
-// src/utils/admin-inventory.js
+import { db } from '../libs/firebase-config.mjs';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  getDocs,
+  query,
+  where,
+  orderBy
+} from 'firebase/firestore';
 
-export const initializeInventory = () => {
-  const inventory = localStorage.getItem('admin-inventory');
-  if (!inventory) {
-    localStorage.setItem('admin-inventory', JSON.stringify([]));
+const INVENTORY_COLLECTION = 'inventory';
+
+export const initializeInventory = async () => {
+  // No initialization needed for Firestore
+};
+
+export const getInventoryItems = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, INVENTORY_COLLECTION));
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching inventory:', error);
+    return [];
   }
 };
 
-export const getInventoryItems = () => {
-  const inventory = localStorage.getItem('admin-inventory');
-  return inventory ? JSON.parse(inventory) : [];
-};
-
-export const addInventoryItem = (item) => {
-  const inventory = getInventoryItems();
-  const timestamp = new Date();
-  const newItem = {
-    ...item,
-    id: Date.now().toString(),
-    createdAt: timestamp.toISOString(),
-    updatedAt: timestamp.toISOString(),
-    date: timestamp.toLocaleDateString(),
-    time: timestamp.toLocaleTimeString()
-  };
-  inventory.push(newItem);
-  localStorage.setItem('admin-inventory', JSON.stringify(inventory));
-  return newItem;
-};
-
-export const updateInventoryItem = (updatedItem) => {
-  const inventory = getInventoryItems();
-  const index = inventory.findIndex(item => item.id === updatedItem.id);
-  if (index !== -1) {
+export const addInventoryItem = async (item) => {
+  try {
     const timestamp = new Date();
-    inventory[index] = {
-      ...updatedItem,
+    const newItem = {
+      ...item,
+      createdAt: timestamp.toISOString(),
       updatedAt: timestamp.toISOString(),
       date: timestamp.toLocaleDateString(),
       time: timestamp.toLocaleTimeString()
     };
-    localStorage.setItem('admin-inventory', JSON.stringify(inventory));
-    return inventory[index];
+    
+    const docRef = await addDoc(collection(db, INVENTORY_COLLECTION), newItem);
+    return { id: docRef.id, ...newItem };
+  } catch (error) {
+    console.error('Error adding inventory item:', error);
+    throw error;
   }
-  return null;
 };
 
-export const deleteInventoryItem = (itemId) => {
-  const inventory = getInventoryItems();
-  const filteredInventory = inventory.filter(item => item.id !== itemId);
-  localStorage.setItem('admin-inventory', JSON.stringify(filteredInventory));
+export const updateInventoryItem = async (updatedItem) => {
+  try {
+    const { id, ...itemData } = updatedItem;
+    const timestamp = new Date();
+    const updatedData = {
+      ...itemData,
+      updatedAt: timestamp.toISOString(),
+      date: timestamp.toLocaleDateString(),
+      time: timestamp.toLocaleTimeString()
+    };
+    
+    const docRef = doc(db, INVENTORY_COLLECTION, id);
+    await updateDoc(docRef, updatedData);
+    return { id, ...updatedData };
+  } catch (error) {
+    console.error('Error updating inventory item:', error);
+    throw error;
+  }
 };
 
-export const filterInventory = (items, storeId, searchTerm) => {
-  return items.filter(item => {
-    if (storeId !== 'all' && item.storeId !== storeId) {
-      return false;
+export const deleteInventoryItem = async (itemId) => {
+  try {
+    const docRef = doc(db, INVENTORY_COLLECTION, itemId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error('Error deleting inventory item:', error);
+    throw error;
+  }
+};
+
+export const filterInventory = async (storeId, searchTerm) => {
+  try {
+    let q = collection(db, INVENTORY_COLLECTION);
+    
+    if (storeId !== 'all') {
+      q = query(q, where('storeId', '==', storeId));
     }
+    
+    const querySnapshot = await getDocs(q);
+    let items = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      return (
+      items = items.filter(item => (
         item.name.toLowerCase().includes(searchLower) ||
         item.brand.toLowerCase().includes(searchLower) ||
         item.category.toLowerCase().includes(searchLower) ||
@@ -66,8 +103,12 @@ export const filterInventory = (items, storeId, searchTerm) => {
         item.colors.some(color => color.toLowerCase().includes(searchLower)) ||
         item.date?.includes(searchTerm) ||
         item.time?.includes(searchTerm)
-      );
+      ));
     }
-    return true;
-  });
+    
+    return items;
+  } catch (error) {
+    console.error('Error filtering inventory:', error);
+    return [];
+  }
 };

@@ -16,6 +16,8 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
     gender: '',
     storeId: selectedStore
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (item) {
@@ -35,30 +37,40 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
     }
   }, [item, selectedStore]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!formData.sizes.length) {
-      alert('Please select at least one size');
+      setError('Please select at least one size');
       return;
     }
 
-    const processedData = {
-      ...formData,
-      colors: formData.colors.split(',').map(color => color.trim()).filter(color => color),
-      price: parseFloat(formData.price),
-      stock: parseInt(formData.stock),
-      storeId: selectedStore === 'all' ? null : selectedStore
-    };
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const processedData = {
+        ...formData,
+        colors: formData.colors.split(',').map(color => color.trim()).filter(color => color),
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock),
+        storeId: selectedStore === 'all' ? null : selectedStore
+      };
 
-    if (item) {
-      updateInventoryItem(processedData);
-    } else {
-      addInventoryItem(processedData);
+      if (item) {
+        await updateInventoryItem(processedData);
+      } else {
+        await addInventoryItem(processedData);
+      }
+
+      if (onInventoryUpdate) await onInventoryUpdate();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to save item');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-
-    if (onInventoryUpdate) onInventoryUpdate();
-    onClose();
   };
 
   return (
@@ -67,15 +79,19 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
       animate={{ opacity: 1, y: 0 }}
       className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}
     >
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+          {error}
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-6">
         <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           {item ? 'Update Item' : 'Add New Item'}
         </h2>
         <button
           onClick={onClose}
-          className={`p-2 rounded-full ${
-            isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-          }`}
+          className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
         >
           <X size={20} className={isDarkMode ? 'text-gray-200' : 'text-gray-900'} />
         </button>
@@ -83,7 +99,6 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Product Name */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Product Name
@@ -98,10 +113,10 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                   : 'bg-white border-gray-300'
               }`}
               required
+              disabled={loading}
             />
           </div>
 
-          {/* Brand */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Brand
@@ -116,10 +131,10 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                   : 'bg-white border-gray-300'
               }`}
               required
+              disabled={loading}
             />
           </div>
 
-          {/* Category */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Category
@@ -133,6 +148,7 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                   : 'bg-white border-gray-300'
               }`}
               required
+              disabled={loading}
             >
               <option value="">Select Category</option>
               <option value="Running">Running</option>
@@ -143,7 +159,6 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
             </select>
           </div>
 
-          {/* Colors */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Colors (comma-separated)
@@ -159,10 +174,10 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                   : 'bg-white border-gray-300'
               }`}
               required
+              disabled={loading}
             />
           </div>
 
-          {/* Price */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Price ($)
@@ -179,10 +194,10 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
               required
               min="0"
               step="0.01"
+              disabled={loading}
             />
           </div>
 
-          {/* Stock */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Stock
@@ -198,10 +213,10 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
               }`}
               required
               min="0"
+              disabled={loading}
             />
           </div>
 
-          {/* Age Group */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Age Group
@@ -215,6 +230,7 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                   : 'bg-white border-gray-300'
               }`}
               required
+              disabled={loading}
             >
               <option value="">Select Age Group</option>
               <option value="Kids">Kids</option>
@@ -223,7 +239,6 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
             </select>
           </div>
 
-          {/* Gender */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Gender
@@ -237,6 +252,7 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                   : 'bg-white border-gray-300'
               }`}
               required
+              disabled={loading}
             >
               <option value="">Select Gender</option>
               <option value="Men">Men</option>
@@ -246,7 +262,6 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
           </div>
         </div>
 
-        {/* Sizes */}
         <div>
           <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
             Available Sizes
@@ -261,7 +276,7 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                     : isDarkMode
                     ? 'bg-gray-700 text-gray-200 border-gray-600 hover:bg-gray-600'
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
+                } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <input
                   type="checkbox"
@@ -273,6 +288,7 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                       : formData.sizes.filter((s) => s !== size);
                     setFormData({ ...formData, sizes: newSizes });
                   }}
+                  disabled={loading}
                 />
                 {size}
               </label>
@@ -280,28 +296,30 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
           </div>
         </div>
 
-        {/* Form Buttons */}
         <div className="flex justify-end space-x-4">
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ scale: loading ? 1 : 1.02 }}
+            whileTap={{ scale: loading ? 1 : 0.98 }}
             type="button"
             onClick={onClose}
+            disabled={loading}
             className={`px-4 py-2 rounded-lg ${
               isDarkMode
                 ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
                 : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-            }`}
+            } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             Cancel
           </motion.button>
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ scale: loading ? 1 : 1.02 }}
+            whileTap={{ scale: loading ? 1 : 0.98 }}
             type="submit"
-            className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white"
+            disabled={loading}
+            className={`px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white
+              ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {item ? 'Update Item' : 'Add Item'}
+            {loading ? 'Saving...' : item ? 'Update Item' : 'Add Item'}
           </motion.button>
         </div>
       </form>
