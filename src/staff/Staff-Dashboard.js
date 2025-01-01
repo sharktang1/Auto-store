@@ -25,15 +25,13 @@ const sampleInventoryData = [
 
 const COLORS = ['#f97316', '#3b82f6', '#a855f7', '#10b981'];
 
-const DashboardCard = ({ title, value, icon: Icon, color, to }) => {
-  const navigate = useNavigate();
-  
+const DashboardCard = ({ title, value, icon: Icon, color, onClick }) => {
   return (
     <motion.div
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       className="cursor-pointer"
-      onClick={() => navigate(to)}
+      onClick={onClick}
     >
       <div className={`p-6 rounded-lg shadow-md ${color} h-full`}>
         <div className="flex items-start justify-between">
@@ -112,9 +110,10 @@ const StatsCard = ({ isDarkMode }) => (
   </motion.div>
 );
 
-const StaffDashboard = () => {
+const StaffDashboard = ({ onSetupClick }) => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
   const [storeLocation, setStoreLocation] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     const cleanup = initializeThemeListener(setIsDarkMode);
@@ -158,21 +157,21 @@ const StaffDashboard = () => {
             value="524"
             icon={Package}
             color="bg-blue-500"
-            to="/staff/inventory"
+            onClick={() => navigate('/staff/inventory')}
           />
           <DashboardCard
             title="Today's Sales"
             value="$2,845"
             icon={DollarSign}
             color="bg-green-500"
-            to="/staff/sales"
+            onClick={() => navigate('/staff/sales')}
           />
           <DashboardCard
             title="Weekly Growth"
             value="+8.5%"
             icon={TrendingUp}
             color="bg-orange-500"
-            to="/staff/stats"
+            onClick={() => navigate('/staff/stats')}
           />
         </div>
 
