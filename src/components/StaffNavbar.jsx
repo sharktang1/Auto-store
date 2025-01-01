@@ -1,20 +1,36 @@
-// staff/components/StaffNavbar.jsx
+// StaffNavbar.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Moon, ChevronDown, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { auth } from '../libs/firebase-config.mjs';
+import { signOut } from 'firebase/auth';
 import { getInitialTheme, setTheme, initializeThemeListener } from '../utils/theme';
+import { toast } from 'react-toastify';
 
-const StaffNavbar = ({ username = "Staff User", email = "staff@example.com" }) => {
+const StaffNavbar = () => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [userData, setUserData] = useState({
+    username: '',
+    email: ''
+  });
   const navigate = useNavigate();
   
-  const firstLetter = username.charAt(0).toUpperCase();
-
   useEffect(() => {
     initializeThemeListener(setIsDarkMode);
-  }, []);
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
+      setUserData({
+        username: user.displayName || 'User',
+        email: user.email
+      });
+    });
+    return () => unsubscribe();
+  }, [navigate]);
 
   const toggleTheme = () => {
     const newTheme = !isDarkMode;
@@ -22,9 +38,14 @@ const StaffNavbar = ({ username = "Staff User", email = "staff@example.com" }) =
     setTheme(newTheme);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('user-token');
-    navigate('/auth');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.clear();
+      navigate('/auth');
+    } catch (error) {
+      toast.error('Logout failed: ' + error.message);
+    }
   };
 
   return (
@@ -63,7 +84,7 @@ const StaffNavbar = ({ username = "Staff User", email = "staff@example.com" }) =
                 whileHover={{ scale: 1.05 }}
                 className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-semibold"
               >
-                {firstLetter}
+                {userData.username.charAt(0).toUpperCase()}
               </motion.div>
               <ChevronDown
                 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} transition-transform duration-300
@@ -89,12 +110,12 @@ const StaffNavbar = ({ username = "Staff User", email = "staff@example.com" }) =
                       <p className={`font-medium ${
                         isDarkMode ? 'text-white' : 'text-gray-900'
                       }`}>
-                        {username}
+                        {userData.username}
                       </p>
                       <p className={`text-sm ${
                         isDarkMode ? 'text-gray-300' : 'text-gray-500'
                       }`}>
-                        {email}
+                        {userData.email}
                       </p>
                       <p className={`text-sm mt-1 ${
                         isDarkMode ? 'text-gray-300' : 'text-gray-500'
