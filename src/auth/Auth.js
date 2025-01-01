@@ -64,15 +64,6 @@ const Auth = () => {
   };
 
   const handleSignup = async () => {
-    if (isAdmin) {
-      const adminQuery = query(collection(db, 'users'), where('role', '==', 'admin'));
-      const querySnapshot = await getDocs(adminQuery);
-      if (!querySnapshot.empty) {
-        toast.error('An admin account already exists');
-        return;
-      }
-    }
-
     const userCredential = await createUserWithEmailAndPassword(
       auth,
       formData.email,
@@ -93,7 +84,6 @@ const Auth = () => {
     await setDoc(doc(db, 'users', userCredential.user.uid), userData);
 
     if (isAdmin) {
-      await setDoc(doc(db, 'config', 'global'), { hasAdmin: true });
       await syncLocalStorageToFirestore(userCredential.user.uid);
     }
 
