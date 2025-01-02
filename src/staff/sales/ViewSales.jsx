@@ -3,24 +3,21 @@ import { motion } from 'framer-motion';
 import { Search, Calendar, Download } from 'lucide-react';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
 import { toast } from 'react-toastify';
 
-const ViewSales = ({ storeData, userId, isDarkMode }) => {
+const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
   const [sales, setSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState(null);
-  const [endDate, setEndDate] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('all');
   const [loading, setLoading] = useState(true);
   const [totalSales, setTotalSales] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
 
   useEffect(() => {
-    if (!storeData?.id || !userId) {
-      console.error('Missing required parameters:', { storeData, userId });
-      toast.error('Error: Missing store or user information');
+    if (!storeData?.id || !userId || !['staff', 'staff-admin'].includes(userRole)) {
+      console.error('Missing required parameters or unauthorized:', { storeData, userId, userRole });
+      toast.error('Error: Missing information or unauthorized access');
       setLoading(false);
       return;
     }
@@ -37,13 +34,14 @@ const ViewSales = ({ storeData, userId, isDarkMode }) => {
       try {
         const salesData = snapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
+          timestamp: doc.data().timestamp?.toDate()
         }));
         setSales(salesData);
+        setLoading(false);
       } catch (error) {
         console.error('Error processing sales data:', error);
         toast.error('Error processing sales data');
-      } finally {
         setLoading(false);
       }
     }, (error) => {
@@ -53,39 +51,59 @@ const ViewSales = ({ storeData, userId, isDarkMode }) => {
     });
 
     return () => unsubscribe();
-  }, [storeData?.id, userId]);
+  }, [storeData?.id, userId, userRole]);
 
   useEffect(() => {
     let filtered = [...sales];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Apply date filter
-    if (startDate && endDate) {
+    if (selectedPeriod !== 'all') {
       filtered = filtered.filter(sale => {
-        const saleDate = sale.timestamp?.toDate();
-        return saleDate && saleDate >= startDate && saleDate <= endDate;
+        const saleDate = sale.timestamp;
+        switch (selectedPeriod) {
+          case 'day':
+            return saleDate >= today;
+          case 'week': {
+            const lastWeek = new Date(today);
+            lastWeek.setDate(lastWeek.getDate() - 7);
+            return saleDate >= lastWeek;
+          }
+          case 'month': {
+            const lastMonth = new Date(today);
+            lastMonth.setMonth(lastMonth.getMonth() - 1);
+            return saleDate >= lastMonth;
+          }
+          case 'year': {
+            const lastYear = new Date(today);
+            lastYear.setFullYear(lastYear.getFullYear() - 1);
+            return saleDate >= lastYear;
+          }
+          default:
+            return true;
+        }
       });
     }
 
-    // Apply search filter
     if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(sale =>
-        sale.productName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        sale.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        sale.id.toLowerCase().includes(searchTerm.toLowerCase())
+        sale.productName?.toLowerCase().includes(searchLower) ||
+        sale.customerName?.toLowerCase().includes(searchLower) ||
+        sale.brand?.toLowerCase().includes(searchLower)
       );
     }
 
     setFilteredSales(filtered);
-
-    // Calculate totals
+    
     const totals = filtered.reduce((acc, sale) => ({
       count: acc.count + 1,
-      revenue: acc.revenue + (sale.price * sale.quantity)
+      revenue: acc.revenue + (sale.total || 0)
     }), { count: 0, revenue: 0 });
 
     setTotalSales(totals.count);
     setTotalRevenue(totals.revenue);
-  }, [sales, searchTerm, startDate, endDate]);
+  }, [sales, searchTerm, selectedPeriod]);
 
   const exportToCSV = () => {
     try {
@@ -94,23 +112,21 @@ const ViewSales = ({ storeData, userId, isDarkMode }) => {
         return;
       }
 
-      const headers = ['Date', 'Product', 'Size', 'Quantity', 'Price', 'Total', 'Customer', 'Payment Method'];
+      const headers = ['Date', 'Brand', 'Product', 'Size', 'Quantity', 'Price', 'Total', 'Customer', 'Phone', 'Payment Method'];
       const csvData = filteredSales.map(sale => [
-        sale.timestamp?.toDate().toLocaleDateString() || 'N/A',
+        sale.timestamp?.toLocaleDateString() || 'N/A',
+        sale.brand || 'N/A',
         sale.productName || 'N/A',
         sale.size || 'N/A',
         sale.quantity || 0,
         sale.price || 0,
-        ((sale.price || 0) * (sale.quantity || 0)).toFixed(2),
+        sale.total?.toFixed(2) || '0.00',
         sale.customerName || 'N/A',
+        sale.customerPhone || 'N/A',
         sale.paymentMethod || 'N/A'
       ]);
 
-      const csvContent = [
-        headers.join(','),
-        ...csvData.map(row => row.join(','))
-      ].join('\n');
-
+      const csvContent = [headers.join(','), ...csvData.map(row => row.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -146,7 +162,7 @@ const ViewSales = ({ storeData, userId, isDarkMode }) => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} />
             <input
               type="text"
-              placeholder="Search by product name, customer, or sale ID..."
+              placeholder="Search by brand, product name, or customer..."
               className={`w-full pl-10 pr-4 py-2 rounded-lg border ${
                 isDarkMode 
                   ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
@@ -161,27 +177,21 @@ const ViewSales = ({ storeData, userId, isDarkMode }) => {
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex items-center gap-2">
             <Calendar size={20} className={isDarkMode ? 'text-gray-200' : 'text-gray-700'} />
-            <DatePicker
-              selected={startDate}
-              onChange={date => setStartDate(date)}
-              placeholderText="Start Date"
+            <select
+              value={selectedPeriod}
+              onChange={(e) => setSelectedPeriod(e.target.value)}
               className={`p-2 rounded-lg border ${
                 isDarkMode 
                   ? 'bg-gray-700 border-gray-600 text-white' 
                   : 'bg-white border-gray-300'
               }`}
-            />
-            <DatePicker
-              selected={endDate}
-              onChange={date => setEndDate(date)}
-              placeholderText="End Date"
-              minDate={startDate}
-              className={`p-2 rounded-lg border ${
-                isDarkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300'
-              }`}
-            />
+            >
+              <option value="all">All Time</option>
+              <option value="day">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="year">This Year</option>
+            </select>
           </div>
 
           <motion.button
@@ -220,19 +230,21 @@ const ViewSales = ({ storeData, userId, isDarkMode }) => {
           <thead>
             <tr className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>
               <th className="p-3 text-left">Date</th>
+              <th className="p-3 text-left">Brand</th>
               <th className="p-3 text-left">Product</th>
               <th className="p-3 text-center">Size</th>
               <th className="p-3 text-right">Quantity</th>
               <th className="p-3 text-right">Price</th>
               <th className="p-3 text-right">Total</th>
               <th className="p-3 text-left">Customer</th>
+              <th className="p-3 text-left">Phone</th>
               <th className="p-3 text-left">Payment</th>
             </tr>
           </thead>
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-4">
+                <td colSpan={10} className="text-center py-4">
                   <p className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
                     No sales records found
                   </p>
@@ -249,15 +261,17 @@ const ViewSales = ({ storeData, userId, isDarkMode }) => {
                   }`}
                 >
                   <td className="p-3">
-                    {sale.timestamp?.toDate().toLocaleDateString() || 'N/A'}
+                    {sale.timestamp?.toLocaleDateString()}
                   </td>
+                  <td className="p-3">{sale.brand}</td>
                   <td className="p-3">{sale.productName}</td>
                   <td className="p-3 text-center">{sale.size}</td>
                   <td className="p-3 text-right">{sale.quantity}</td>
                   <td className="p-3 text-right">KES {sale.price?.toFixed(2)}</td>
-                  <td className="p-3 text-right">KES {((sale.price || 0) * (sale.quantity || 0)).toFixed(2)}</td>
+                  <td className="p-3 text-right">KES {sale.total?.toFixed(2)}</td>
                   <td className="p-3">{sale.customerName || 'N/A'}</td>
-                  <td className="p-3 capitalize">{sale.paymentMethod || 'N/A'}</td>
+                  <td className="p-3">{sale.customerPhone || 'N/A'}</td>
+                  <td className="p-3 capitalize">{sale.paymentMethod}</td>
                 </motion.tr>
               ))
             )}

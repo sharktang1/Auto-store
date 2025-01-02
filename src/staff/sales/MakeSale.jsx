@@ -1,12 +1,11 @@
-// MakeSale.jsx
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Search, ShoppingCart } from 'lucide-react';
-import { collection, addDoc, getDocs, query, where, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
 import { toast } from 'react-toastify';
 
-const MakeSale = ({ storeData, userId, onClose, onSaleComplete, isDarkMode }) => {
+const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDarkMode }) => {
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,9 +26,9 @@ const MakeSale = ({ storeData, userId, onClose, onSaleComplete, isDarkMode }) =>
 
   useEffect(() => {
     const fetchInventory = async () => {
-      if (!storeData?.id) {
-        console.error('Missing required store information');
-        toast.error('Error: Store information not found');
+      if (!storeData?.id || !userId || !['staff', 'staff-admin'].includes(userRole)) {
+        console.error('Missing required information or unauthorized');
+        toast.error('Error: Missing information or unauthorized access');
         setLoading(false);
         return;
       }
@@ -53,7 +52,7 @@ const MakeSale = ({ storeData, userId, onClose, onSaleComplete, isDarkMode }) =>
     };
 
     fetchInventory();
-  }, [storeData]);
+  }, [storeData, userId, userRole]);
 
   useEffect(() => {
     if (inventory.length > 0 && searchTerm) {
@@ -119,9 +118,9 @@ const MakeSale = ({ storeData, userId, onClose, onSaleComplete, isDarkMode }) =>
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!storeData?.id || !userId) {
-      toast.error('Missing required store or user information');
+
+    if (!storeData?.id || !userId || !['staff', 'staff-admin'].includes(userRole)) {
+      toast.error('Missing required information or unauthorized');
       return;
     }
 
@@ -132,31 +131,47 @@ const MakeSale = ({ storeData, userId, onClose, onSaleComplete, isDarkMode }) =>
     setProcessing(true);
 
     try {
-      // Create sale record
-      const saleRecord = {
-        ...saleData,
-        productId: selectedProduct.id,
-        storeId: storeData.id,
-        storeLocation: storeData.location,
-        storeNumber: storeData.storeNumber,
-        userId,
-        timestamp: serverTimestamp(),
-        total: saleData.price * saleData.quantity
-      };
+      await runTransaction(db, async (transaction) => {
+        // Check product exists and has sufficient stock
+        const productRef = doc(db, 'inventory', selectedProduct.id);
+        const productDoc = await transaction.get(productRef);
+        
+        if (!productDoc.exists()) {
+          throw new Error('Product not found');
+        }
 
-      // Add sale to database
-      const saleRef = await addDoc(collection(db, 'sales'), saleRecord);
+        const productData = productDoc.data();
+        if (productData.stock < saleData.quantity) {
+          throw new Error(`Insufficient stock. Only ${productData.stock} units available`);
+        }
 
-      // Update inventory stock
-      const productRef = doc(db, 'inventory', selectedProduct.id);
-      const newStock = selectedProduct.stock - saleData.quantity;
-      await updateDoc(productRef, { stock: newStock });
+        // Create sale record
+        const saleRecord = {
+          ...saleData,
+          productId: selectedProduct.id,
+          storeId: storeData.id,
+          storeLocation: storeData.location,
+          storeNumber: storeData.storeNumber,
+          userId,
+          timestamp: new Date(),
+          total: saleData.price * saleData.quantity
+        };
+
+        // Add sale
+        const saleRef = doc(collection(db, 'sales'));
+        transaction.set(saleRef, saleRecord);
+
+        // Update inventory
+        transaction.update(productRef, {
+          stock: productData.stock - saleData.quantity
+        });
+      });
 
       toast.success('Sale completed successfully');
       onSaleComplete();
     } catch (error) {
       console.error('Error processing sale:', error);
-      toast.error('Error processing sale. Please try again.');
+      toast.error(error.message || 'Error processing sale. Please try again.');
     } finally {
       setProcessing(false);
     }

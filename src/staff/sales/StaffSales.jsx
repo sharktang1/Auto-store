@@ -1,8 +1,8 @@
 // StaffSales.jsx
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Store, Search, Calendar } from 'lucide-react';
-import { collection, getDocs, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { Plus, Store } from 'lucide-react';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../libs/firebase-config';
 import StaffNavbar from '../../components/StaffNavbar';
@@ -21,11 +21,12 @@ const StaffSales = () => {
     storeNumber: null
   });
   const [userId, setUserId] = useState(null);
+  const [userRole, setUserRole] = useState(null);
 
   useEffect(() => {
     let unsubscribeTheme = initializeThemeListener(setIsDarkMode);
 
-    const fetchStoreData = async () => {
+    const fetchUserAndStoreData = async () => {
       try {
         const auth = getAuth();
         const currentUser = auth.currentUser;
@@ -38,7 +39,7 @@ const StaffSales = () => {
 
         setUserId(currentUser.uid);
 
-        // Fetch user data from Firestore
+        // Fetch user data including role
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         
         if (!userDoc.exists()) {
@@ -49,6 +50,15 @@ const StaffSales = () => {
 
         const userData = userDoc.data();
         const userLocation = userData.location;
+        const role = userData.role;
+
+        if (!['staff', 'staff-admin'].includes(role)) {
+          toast.error('Unauthorized access');
+          setLoading(false);
+          return;
+        }
+
+        setUserRole(role);
 
         if (!userLocation) {
           toast.error('Store location not assigned');
@@ -56,7 +66,7 @@ const StaffSales = () => {
           return;
         }
 
-        // Fetch store data from businesses collection
+        // Fetch store data
         const businessesRef = collection(db, 'businesses');
         const businessesSnapshot = await getDocs(businessesRef);
         
@@ -86,13 +96,13 @@ const StaffSales = () => {
         setLoading(false);
 
       } catch (error) {
-        console.error('Error fetching store data:', error);
+        console.error('Error fetching data:', error);
         toast.error('Error connecting to database');
         setLoading(false);
       }
     };
 
-    fetchStoreData();
+    fetchUserAndStoreData();
     
     return () => {
       if (typeof unsubscribeTheme === 'function') unsubscribeTheme();
@@ -103,6 +113,10 @@ const StaffSales = () => {
     setIsMakingSale(false);
     toast.success('Sale recorded successfully');
   };
+
+  if (!userRole || !['staff', 'staff-admin'].includes(userRole)) {
+    return <div>Unauthorized access</div>;
+  }
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
@@ -127,27 +141,25 @@ const StaffSales = () => {
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setIsMakingSale(!isMakingSale)}
-              className={`flex items-center px-4 py-2 rounded-lg ${
-                isMakingSale
-                  ? 'bg-gray-500 hover:bg-gray-600'
-                  : 'bg-blue-500 hover:bg-blue-600'
-              } text-white`}
-            >
-              {isMakingSale ? (
-                <>View Sales</>
-              ) : (
-                <>
-                  <Plus size={20} className="mr-2" />
-                  Make New Sale
-                </>
-              )}
-            </motion.button>
-          </div>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setIsMakingSale(!isMakingSale)}
+            className={`flex items-center px-4 py-2 rounded-lg ${
+              isMakingSale
+                ? 'bg-gray-500 hover:bg-gray-600'
+                : 'bg-blue-500 hover:bg-blue-600'
+            } text-white`}
+          >
+            {isMakingSale ? (
+              <>View Sales</>
+            ) : (
+              <>
+                <Plus size={20} className="mr-2" />
+                Make New Sale
+              </>
+            )}
+          </motion.button>
         </div>
 
         {loading ? (
@@ -162,6 +174,7 @@ const StaffSales = () => {
               <MakeSale
                 storeData={storeData}
                 userId={userId}
+                userRole={userRole}
                 onClose={() => setIsMakingSale(false)}
                 onSaleComplete={handleSaleComplete}
                 isDarkMode={isDarkMode}
@@ -170,6 +183,7 @@ const StaffSales = () => {
               <ViewSales
                 storeData={storeData}
                 userId={userId}
+                userRole={userRole}
                 isDarkMode={isDarkMode}
               />
             )}
