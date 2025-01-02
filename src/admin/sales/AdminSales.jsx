@@ -8,7 +8,8 @@ import {
   Store,
   Users,
   FilterX,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronDown
 } from 'lucide-react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
@@ -27,6 +28,7 @@ const AdminSales = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'timestamp', direction: 'desc' });
+  const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
   const [salesMetrics, setSalesMetrics] = useState({
     totalSales: 0,
     totalQuantity: 0,
@@ -35,12 +37,32 @@ const AdminSales = () => {
     staffSales: {}
   });
 
+  const timeFilterOptions = [
+    { value: 'all', label: 'All Time' },
+    { value: 'today', label: 'Today' },
+    { value: 'week', label: 'This Week' },
+    { value: 'month', label: 'This Month' },
+    { value: 'year', label: 'This Year' }
+  ];
+
   useEffect(() => {
     const cleanup = initializeThemeListener(setIsDarkMode);
     fetchSales();
     return () => {
       if (cleanup) cleanup();
     };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const dropdown = document.getElementById('time-filter-dropdown');
+      if (dropdown && !dropdown.contains(event.target)) {
+        setIsTimeDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const fetchSales = () => {
@@ -62,7 +84,6 @@ const AdminSales = () => {
               total: doc.data().total || doc.data().price * doc.data().quantity || 0
             }));
             
-            console.log('Fetched sales data:', salesData); // For debugging
             setSales(salesData);
             setFilteredSales(salesData);
             calculateMetrics(salesData);
@@ -90,16 +111,13 @@ const AdminSales = () => {
 
   const calculateMetrics = (salesData) => {
     const metrics = salesData.reduce((acc, sale) => {
-      // Total sales and quantity
       acc.totalSales += sale.total || 0;
       acc.totalQuantity += sale.quantity || 0;
 
-      // Store sales
       if (sale.storeLocation) {
         acc.storeSales[sale.storeLocation] = (acc.storeSales[sale.storeLocation] || 0) + (sale.total || 0);
       }
 
-      // Staff sales
       if (sale.customerName) {
         acc.staffSales[sale.customerName] = (acc.staffSales[sale.customerName] || 0) + (sale.total || 0);
       }
@@ -116,8 +134,13 @@ const AdminSales = () => {
     setSalesMetrics(metrics);
   };
 
+  const handleTimeFilterSelect = (value) => {
+    setTimeFilter(value);
+    filterSalesByTime(value);
+    setIsTimeDropdownOpen(false);
+  };
+
   const filterSalesByTime = (filter) => {
-    setTimeFilter(filter);
     const now = new Date();
     let filtered = [...sales];
 
@@ -308,22 +331,39 @@ const AdminSales = () => {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              {['today', 'week', 'month', 'year', 'all'].map((period) => (
-                <button
-                  key={period}
-                  onClick={() => filterSalesByTime(period)}
-                  className={`px-4 py-2 rounded-lg ${
-                    timeFilter === period
-                      ? 'bg-orange-500 text-white'
-                      : isDarkMode
-                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {period.charAt(0).toUpperCase() + period.slice(1)}
-                </button>
-              ))}
+            {/* Time Filter Dropdown */}
+            <div className="relative" id="time-filter-dropdown">
+              <button
+                onClick={() => setIsTimeDropdownOpen(!isTimeDropdownOpen)}
+                className={`flex items-center justify-between px-4 py-2 rounded-lg ${
+                  isDarkMode 
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                } min-w-[140px]`}
+              >
+                <span>{timeFilterOptions.find(option => option.value === timeFilter)?.label || 'Select Period'}</span>
+                <ChevronDown size={20} className={`ml-2 transition-transform ${isTimeDropdownOpen ? 'transform rotate-180' : ''}`} />
+              </button>
+
+              {isTimeDropdownOpen && (
+                <div className={`absolute z-10 mt-1 w-full rounded-lg shadow-lg ${
+                  isDarkMode ? 'bg-gray-700' : 'bg-white'
+                }`}>
+                  {timeFilterOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => handleTimeFilterSelect(option.value)}
+                      className={`w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-lg last:rounded-b-lg ${
+                        isDarkMode 
+                          ? 'text-gray-300 hover:bg-gray-600' 
+                          : 'text-gray-700 hover:bg-gray-100'
+                      } ${timeFilter === option.value ? 'bg-orange-500 text-white hover:bg-orange-600' : ''}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

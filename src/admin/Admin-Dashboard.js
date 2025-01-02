@@ -212,14 +212,14 @@ const Dashboard = () => {
             value="23"
             icon={Users}
             color="bg-purple-500"
-            to="/staff"
+            to="/admin/staff"
           />
           <DashboardCard
             title="Monthly Growth"
             value="+15%"
             icon={TrendingUp}
             color="bg-orange-500"
-            to="/stats"
+            to="/admin/stats"
           />
         </div>
 
