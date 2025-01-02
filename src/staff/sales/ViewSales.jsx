@@ -14,9 +14,10 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
   const [totalSales, setTotalSales] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
 
+  // Fetch sales data
   useEffect(() => {
-    if (!storeData?.id || !userId || !['staff', 'staff-admin'].includes(userRole)) {
-      console.error('Missing required parameters or unauthorized:', { storeData, userId, userRole });
+    if (!userId || !['staff', 'staff-admin'].includes(userRole)) {
+      console.error('Missing required parameters or unauthorized:', { userId, userRole });
       toast.error('Error: Missing information or unauthorized access');
       setLoading(false);
       return;
@@ -25,34 +26,39 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
     const salesRef = collection(db, 'sales');
     const salesQuery = query(
       salesRef,
-      where('storeId', '==', storeData.id),
       where('userId', '==', userId),
       orderBy('timestamp', 'desc')
     );
 
-    const unsubscribe = onSnapshot(salesQuery, (snapshot) => {
-      try {
-        const salesData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate()
-        }));
-        setSales(salesData);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error processing sales data:', error);
-        toast.error('Error processing sales data');
+    const unsubscribe = onSnapshot(
+      salesQuery,
+      (snapshot) => {
+        try {
+          const salesData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate()
+          }));
+          console.log('Fetched sales data:', salesData);
+          setSales(salesData);
+          setLoading(false);
+        } catch (error) {
+          console.error('Error processing sales data:', error);
+          toast.error('Error processing sales data');
+          setLoading(false);
+        }
+      },
+      (error) => {
+        console.error('Error in sales query:', error);
+        toast.error(`Error loading sales data: ${error.message}`);
         setLoading(false);
       }
-    }, (error) => {
-      console.error('Error in sales query:', error);
-      toast.error('Error loading sales data');
-      setLoading(false);
-    });
+    );
 
     return () => unsubscribe();
-  }, [storeData?.id, userId, userRole]);
+  }, [userId, userRole]);
 
+  // Filter sales based on search term and time period
   useEffect(() => {
     let filtered = [...sales];
     const now = new Date();
@@ -156,6 +162,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
 
   return (
     <div className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
+      {/* Search and Filter Controls */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="flex-1">
           <div className={`relative flex items-center ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
@@ -206,6 +213,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         </div>
       </div>
 
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
@@ -225,6 +233,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         </div>
       </div>
 
+      {/* Sales Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
