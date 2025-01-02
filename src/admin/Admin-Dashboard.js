@@ -205,7 +205,7 @@ const Dashboard = () => {
             value="$45,678"
             icon={DollarSign}
             color="bg-green-500"
-            to="/sales"
+            to="/admin/sales"
           />
           <DashboardCard
             title="Active Staff"
