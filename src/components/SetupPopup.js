@@ -1,3 +1,4 @@
+// SetupPopup.jsx
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Store, MapPin, Building } from 'lucide-react';
@@ -20,30 +21,19 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
     );
   };
 
-  const handleClose = () => {
-    if (!isFormValid()) {
-      toast.error('Please complete the setup form before closing');
-      return;
-    }
-    onClose();
-  };
-
   const handleLocationChange = (index, value) => {
     const newLocations = [...formData.locations];
     newLocations[index] = value;
     setFormData({ ...formData, locations: newLocations });
   };
 
-  const addLocationField = () => {
+  const handleNumberOfStoresChange = (e) => {
+    const newCount = parseInt(e.target.value);
     setFormData({
       ...formData,
-      locations: [...formData.locations, '']
+      numberOfStores: e.target.value,
+      locations: Array(newCount).fill('').map((_, i) => formData.locations[i] || '')
     });
-  };
-
-  const removeLocationField = (index) => {
-    const newLocations = formData.locations.filter((_, i) => i !== index);
-    setFormData({ ...formData, locations: newLocations });
   };
 
   const handleSubmit = async (e) => {
@@ -71,9 +61,13 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
 
       await setDoc(doc(db, 'businesses', user.uid), businessData);
       
+      // Update user document to mark setup as complete
+      await setDoc(doc(db, 'users', user.uid), {
+        setupCompleted: true,
+        businessId: user.uid
+      }, { merge: true });
+      
       onSubmit(businessData);
-      toast.success('Business setup completed successfully!');
-      onClose();
     } catch (error) {
       console.error('Error saving business data:', error);
       toast.error('Failed to save business data. Please try again.');
@@ -91,8 +85,8 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
             className="relative w-full max-w-md p-6 rounded-lg shadow-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
           >
             <button
-              onClick={handleClose}
-              className="absolute top-4 right-4 p-1 rounded-full hover:bg-gray-900 hover:bg-opacity-10 dark:hover:bg-white dark:hover:bg-opacity-10"
+              onClick={onClose}
+              className="absolute top-4 right-4 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               <X size={20} />
             </button>
@@ -108,13 +102,13 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
                   Business Name
                 </label>
                 <div className="relative">
-                  <Building className="absolute left-3 top-3 text-gray-500 dark:text-gray-400" size={18} />
+                  <Building className="absolute left-3 top-3 text-gray-500" size={18} />
                   <input
                     type="text"
                     required
                     value={formData.businessName}
                     onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
                     placeholder="Enter your business name"
                   />
                 </div>
@@ -122,24 +116,17 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
 
               <div>
                 <label className="block mb-2 text-sm font-medium">
-                  Number of Stores (Duka)
+                  Number of Stores
                 </label>
                 <div className="relative">
-                  <Store className="absolute left-3 top-3 text-gray-500 dark:text-gray-400" size={18} />
+                  <Store className="absolute left-3 top-3 text-gray-500" size={18} />
                   <select
                     value={formData.numberOfStores}
-                    onChange={(e) => {
-                      const newCount = parseInt(e.target.value);
-                      setFormData({
-                        ...formData,
-                        numberOfStores: e.target.value,
-                        locations: Array(newCount).fill('').map((_, i) => formData.locations[i] || '')
-                      });
-                    }}
-                    className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    onChange={handleNumberOfStoresChange}
+                    className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
                   >
                     {[1, 2, 3, 4, 5].map(num => (
-                      <option key={num} value={num}>Duka {num}</option>
+                      <option key={num} value={num}>Store {num}</option>
                     ))}
                   </select>
                 </div>
@@ -151,14 +138,14 @@ const SetupPopup = ({ isOpen, onClose, onSubmit }) => {
                 </label>
                 {formData.locations.map((location, index) => (
                   <div key={index} className="relative">
-                    <MapPin className="absolute left-3 top-3 text-gray-500 dark:text-gray-400" size={18} />
+                    <MapPin className="absolute left-3 top-3 text-gray-500" size={18} />
                     <input
                       type="text"
                       required
                       value={location}
                       onChange={(e) => handleLocationChange(index, e.target.value)}
-                      placeholder={`Enter location for Duka ${index + 1}`}
-                      className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder={`Enter location for Store ${index + 1}`}
+                      className="pl-10 w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
                     />
                   </div>
                 ))}

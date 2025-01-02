@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Store } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../libs/firebase-config';
 import Navbar from '../../components/Navbar';
 import UpdateInventory from './UpdateInventory';
 import ViewInventory from './ViewInventory';
@@ -14,21 +17,38 @@ const InventoryPage = () => {
   const [selectedStore, setSelectedStore] = useState('all');
   const [stores, setStores] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize theme listener and inventory
     const cleanup = initializeThemeListener(setIsDarkMode);
     initializeInventory();
 
-    // Get stores from localStorage
-    const businessSetup = JSON.parse(localStorage.getItem('businessSetup') || '{}');
-    const storeLocations = businessSetup.locations || [];
-    setStores(storeLocations.map((location, index) => ({
-      id: `store-${index + 1}`,
-      name: `Duka ${index + 1}`,
-      location
-    })));
+    const fetchStores = async () => {
+      try {
+        const auth = getAuth();
+        const user = auth.currentUser;
+        
+        if (!user) return;
 
+        const businessDoc = await getDoc(doc(db, 'businesses', user.uid));
+        if (!businessDoc.exists()) return;
+
+        const businessData = businessDoc.data();
+        const storeLocations = businessData.locations || [];
+        
+        setStores(storeLocations.map((location, index) => ({
+          id: `store-${index + 1}`,
+          name: `${businessData.businessName} - Store ${index + 1}`,
+          location
+        })));
+      } catch (error) {
+        console.error('Error fetching stores:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStores();
     return cleanup;
   }, []);
 
@@ -40,6 +60,10 @@ const InventoryPage = () => {
   const handleInventoryUpdate = () => {
     setRefreshTrigger(prev => prev + 1);
   };
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
@@ -114,7 +138,7 @@ const InventoryPage = () => {
           />
         ) : (
           <ViewInventory
-            key={refreshTrigger} // Force re-render when inventory updates
+            key={refreshTrigger}
             onEditItem={handleEditItem}
             selectedStore={selectedStore}
             onInventoryUpdate={handleInventoryUpdate}

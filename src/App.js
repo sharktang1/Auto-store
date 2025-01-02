@@ -1,9 +1,10 @@
+// App.js
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './libs/firebase-config';
 
 import Auth from './auth/Auth';
@@ -22,6 +23,7 @@ import AdminStaff from './admin/staff/AdminStaff';
 import StaffInventory from './staff/inventory/StaffInventory';
 import StaffSales from './staff/sales/StaffSales';
 import StaffStats from './staff/stats/StaffStats';
+import Staffleaderboard from './staff/Leaderboard/staffleaderboard';
 
 import { getInitialTheme } from './utils/theme';
 
@@ -48,6 +50,7 @@ function App() {
   const [showStaffSetup, setShowStaffSetup] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
   const [userRole, setUserRole] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const auth = getAuth();
 
   useEffect(() => {
@@ -55,50 +58,85 @@ function App() {
       if (user) {
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
+          
           if (userDoc.exists()) {
             const userData = userDoc.data();
             setUserRole(userData.role);
+
+            // Check for admin setup
+            if (userData.role === 'admin') {
+              const businessDoc = await getDoc(doc(db, 'businesses', user.uid));
+              if (!businessDoc.exists()) {
+                setShowAdminSetup(true);
+              }
+            }
             
-            // Check if staff setup is needed
+            // Check for staff setup
             if (userData.role === 'staff' && !userData.location) {
               setShowStaffSetup(true);
             }
+          } else {
+            // New user - initialize as admin and show setup
+            await setDoc(doc(db, 'users', user.uid), {
+              role: 'admin',
+              email: user.email,
+              createdAt: new Date().toISOString()
+            });
+            setUserRole('admin');
+            setShowAdminSetup(true);
           }
         } catch (error) {
           console.error('Error fetching user data:', error);
+          toast.error('Error loading user data');
         }
       } else {
         setUserRole(null);
       }
+      setIsLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const handleAdminSetupSubmit = (formData) => {
-    localStorage.setItem('adminSetupCompleted', 'true');
-    localStorage.setItem('businessSetup', JSON.stringify(formData));
-    setShowAdminSetup(false);
-    toast.success('Admin setup completed successfully!', {
-      theme: isDarkMode ? 'dark' : 'light',
-    });
+  const handleAdminSetupSubmit = async (formData) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      await setDoc(doc(db, 'businesses', user.uid), {
+        ...formData,
+        createdAt: new Date().toISOString()
+      });
+
+      setShowAdminSetup(false);
+      toast.success('Setup completed successfully!');
+    } catch (error) {
+      console.error('Setup error:', error);
+      toast.error('Setup failed. Please try again.');
+    }
   };
 
   const handleStaffSetupSubmit = async (formData) => {
     try {
-      localStorage.setItem('staffSetupCompleted', 'true');
-      localStorage.setItem('staffSetup', JSON.stringify(formData));
+      const user = auth.currentUser;
+      if (!user) return;
+
+      await setDoc(doc(db, 'users', user.uid), {
+        location: formData.location,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
       setShowStaffSetup(false);
-      toast.success('Staff setup completed successfully!', {
-        theme: isDarkMode ? 'dark' : 'light',
-      });
+      toast.success('Staff setup completed successfully!');
     } catch (error) {
-      console.error('Error in staff setup:', error);
-      toast.error('Failed to complete staff setup', {
-        theme: isDarkMode ? 'dark' : 'light',
-      });
+      console.error('Staff setup error:', error);
+      toast.error('Staff setup failed');
     }
   };
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <Router>
@@ -118,14 +156,12 @@ function App() {
             path="/admin/dashboard"
             element={
               <ProtectedRoute>
-                <>
-                  <AdminDashboard onSetupClick={() => setShowAdminSetup(true)} />
-                  <SetupPopup
-                    isOpen={showAdminSetup}
-                    onClose={() => setShowAdminSetup(false)}
-                    onSubmit={handleAdminSetupSubmit}
-                  />
-                </>
+                <AdminDashboard />
+                <SetupPopup
+                  isOpen={showAdminSetup}
+                  onClose={() => setShowAdminSetup(false)}
+                  onSubmit={handleAdminSetupSubmit}
+                />
               </ProtectedRoute>
             }
           />
@@ -139,20 +175,19 @@ function App() {
             path="/staff/dashboard"
             element={
               <ProtectedRoute>
-                <>
-                  <StaffDashboard onSetupClick={() => setShowStaffSetup(true)} />
-                  <StaffSetupPopup
-                    isOpen={showStaffSetup}
-                    onClose={() => setShowStaffSetup(false)}
-                    onSubmit={handleStaffSetupSubmit}
-                  />
-                </>
+                <StaffDashboard />
+                <StaffSetupPopup
+                  isOpen={showStaffSetup}
+                  onClose={() => setShowStaffSetup(false)}
+                  onSubmit={handleStaffSetupSubmit}
+                />
               </ProtectedRoute>
             }
           />
           <Route path="/staff/inventory" element={<ProtectedRoute><StaffInventory /></ProtectedRoute>} />
           <Route path="/staff/sales" element={<ProtectedRoute><StaffSales /></ProtectedRoute>} />
           <Route path="/staff/stats" element={<ProtectedRoute><StaffStats /></ProtectedRoute>} />
+          <Route path="/staff/Leaderboard" element={<ProtectedRoute><Staffleaderboard /></ProtectedRoute>} />
         </Routes>
       </div>
     </Router>

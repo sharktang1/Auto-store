@@ -198,11 +198,10 @@ const StaffDashboard = () => {
             onClick={() => navigate('/staff/sales')}
           />
           <DashboardCard
-            title="Weekly Growth"
-            value="+8.5%"
+            title="Leaderboard"
             icon={TrendingUp}
             color="bg-orange-500"
-            onClick={() => navigate('/staff/stats')}
+            onClick={() => navigate('/staff/Leaderboard')}
           />
         </div>
 
