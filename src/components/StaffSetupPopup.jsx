@@ -4,13 +4,23 @@ import { X, Store, Building } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getInitialTheme } from '../utils/theme';
 import { db } from '../libs/firebase-config';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const StaffSetupPopup = ({ isOpen, onClose, onSubmit }) => {
   const isDarkMode = getInitialTheme();
   const [selectedLocation, setSelectedLocation] = useState('');
+  const [storeNumber, setStoreNumber] = useState('');
   const [businessData, setBusinessData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [staffInfo, setStaffInfo] = useState({
+    firstName: '',
+    lastName: '',
+    phoneNumber: '',
+    role: 'staff'
+  });
+
+  const auth = getAuth();
 
   useEffect(() => {
     const fetchBusinessData = async () => {
@@ -21,32 +31,86 @@ const StaffSetupPopup = ({ isOpen, onClose, onSubmit }) => {
           id: doc.id,
           ...doc.data()
         }));
-        setBusinessData(data[0]); // Assuming we're working with the first business
+        setBusinessData(data[0]);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching business data:', error);
-        toast.error('Failed to load store locations', {
-          theme: isDarkMode ? 'dark' : 'light'
-        });
+        toast.error('Failed to load store locations');
         setLoading(false);
       }
     };
 
     if (isOpen) {
       fetchBusinessData();
+      checkExistingStaffProfile();
     }
-  }, [isOpen, isDarkMode]);
+  }, [isOpen]);
 
-  const handleSubmit = (e) => {
+  const checkExistingStaffProfile = async () => {
+    if (!auth.currentUser) return;
+
+    try {
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setStaffInfo(prevInfo => ({
+          ...prevInfo,
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          phoneNumber: userData.phoneNumber || '',
+          role: userData.role || 'staff'
+        }));
+        if (userData.location) {
+          setSelectedLocation(userData.location);
+          setStoreNumber(userData.storeNumber || '');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking existing profile:', error);
+    }
+  };
+
+  const handleLocationSelect = (location, index) => {
+    setSelectedLocation(location);
+    setStoreNumber(`duka-${index + 1}`);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedLocation) {
-      toast.error('Please select a Duka location', {
-        theme: isDarkMode ? 'dark' : 'light'
-      });
+    if (!selectedLocation || !storeNumber) {
+      toast.error('Please select a Duka location');
       return;
     }
-    onSubmit({ location: selectedLocation });
-    onClose();
+
+    if (!staffInfo.firstName || !staffInfo.lastName || !staffInfo.phoneNumber) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      if (!auth.currentUser) {
+        throw new Error('No authenticated user found');
+      }
+
+      const userData = {
+        ...staffInfo,
+        location: selectedLocation,
+        storeNumber: storeNumber,
+        email: auth.currentUser.email,
+        username: auth.currentUser.email.split('@')[0],
+        updatedAt: new Date().toISOString(),
+        businessId: businessData.id
+      };
+
+      await setDoc(doc(db, 'users', auth.currentUser.uid), userData, { merge: true });
+
+      onSubmit({ location: selectedLocation, storeNumber: storeNumber });
+      toast.success('Staff profile updated successfully');
+      onClose();
+    } catch (error) {
+      console.error('Error saving staff data:', error);
+      toast.error('Failed to save staff information');
+    }
   };
 
   return (
@@ -74,10 +138,6 @@ const StaffSetupPopup = ({ isOpen, onClose, onSubmit }) => {
               <Building size={24} className="text-orange-500" />
               <h2 className="text-2xl font-bold">Welcome to {businessData?.businessName}</h2>
             </div>
-            
-            <p className={`mb-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              Please select your Duka location
-            </p>
 
             {loading ? (
               <div className="flex justify-center py-4">
@@ -85,26 +145,79 @@ const StaffSetupPopup = ({ isOpen, onClose, onSubmit }) => {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 gap-3">
-                  {businessData?.locations.map((location, index) => (
-                    <motion.button
-                      key={index}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      type="button"
-                      onClick={() => setSelectedLocation(location)}
-                      className={`flex items-center gap-2 p-3 rounded-md border transition-colors duration-200 ${
-                        selectedLocation === location
-                          ? 'bg-orange-500 text-white border-orange-600'
-                          : isDarkMode
-                          ? 'bg-gray-700 border-gray-600 hover:bg-gray-600'
-                          : 'bg-white border-gray-300 hover:bg-gray-50'
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        First Name
+                      </label>
+                      <input
+                        type="text"
+                        value={staffInfo.firstName}
+                        onChange={(e) => setStaffInfo(prev => ({ ...prev, firstName: e.target.value }))}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 ${
+                          isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white'
+                        }`}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Last Name
+                      </label>
+                      <input
+                        type="text"
+                        value={staffInfo.lastName}
+                        onChange={(e) => setStaffInfo(prev => ({ ...prev, lastName: e.target.value }))}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 ${
+                          isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white'
+                        }`}
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={staffInfo.phoneNumber}
+                      onChange={(e) => setStaffInfo(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                      className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 ${
+                        isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white'
                       }`}
-                    >
-                      <Store size={18} />
-                      <span>{location}</span>
-                    </motion.button>
-                  ))}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Select Location
+                    </label>
+                    <div className="grid grid-cols-1 gap-3">
+                      {businessData?.locations.map((location, index) => (
+                        <motion.button
+                          key={index}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          type="button"
+                          onClick={() => handleLocationSelect(location, index)}
+                          className={`flex items-center gap-2 p-3 rounded-md border transition-colors duration-200 ${
+                            selectedLocation === location
+                              ? 'bg-orange-500 text-white border-orange-600'
+                              : isDarkMode
+                              ? 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                              : 'bg-white border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <Store size={18} />
+                          <span>{location} (Duka {index + 1})</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <motion.button

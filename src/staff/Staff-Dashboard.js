@@ -5,8 +5,10 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import StaffNavbar from '../components/StaffNavbar';
 import { getInitialTheme, initializeThemeListener } from '../utils/theme';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
-// Sample data for charts
+// Sample data for charts remains the same
 const sampleSalesData = [
   { name: 'Jan', value: 400 },
   { name: 'Feb', value: 300 },
@@ -53,7 +55,6 @@ const StatsCard = ({ isDarkMode }) => (
     className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} cursor-pointer`}
   >
     <div className="grid grid-cols-2 gap-4">
-      {/* Sales Trend Chart */}
       <div className="h-64">
         <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Sales Trend
@@ -69,7 +70,6 @@ const StatsCard = ({ isDarkMode }) => (
         <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Inventory Mix
         </h3>
-        {/* Pie Chart */}
         <div className="h-1/2">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -88,7 +88,6 @@ const StatsCard = ({ isDarkMode }) => (
           </ResponsiveContainer>
         </div>
 
-        {/* Key Metrics */}
         <div className={`mt-4 p-4 rounded-lg bg-opacity-10 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="space-y-2">
             <div className="flex justify-between">
@@ -110,26 +109,58 @@ const StatsCard = ({ isDarkMode }) => (
   </motion.div>
 );
 
-const StaffDashboard = ({ onSetupClick }) => {
+const StaffDashboard = () => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
-  const [storeLocation, setStoreLocation] = useState('');
+  const [userData, setUserData] = useState({
+    username: '',
+    email: '',
+    location: '',
+    storeNumber: ''
+  });
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     const cleanup = initializeThemeListener(setIsDarkMode);
     
-    // Get store location from localStorage
-    const staffSetup = JSON.parse(localStorage.getItem('staffSetup') || '{}');
-    setStoreLocation(staffSetup.location || 'Unknown Location');
-    
+    // Fetch user data from Firestore
+    const fetchUserData = async () => {
+      try {
+        const auth = getAuth();
+        const currentUser = auth.currentUser;
+        
+        if (currentUser) {
+          const db = getFirestore();
+          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+          
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            setUserData({
+              username: data.username || '',
+              email: data.email || '',
+              location: data.location || '',
+              storeNumber: data.storeNumber || ''
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserData();
     return cleanup;
   }, []);
 
-  // Mock user data
-  const userData = {
-    username: "Staff User",
-    email: "staff@example.com"
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
@@ -145,12 +176,12 @@ const StaffDashboard = ({ onSetupClick }) => {
           <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             Store Dashboard
           </h1>
-          <p className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            {storeLocation}
-          </p>
+          <div className={`text-right ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            <p className="text-lg">{userData.location}</p>
+            <p className="text-sm opacity-75">Store #{userData.storeNumber}</p>
+          </div>
         </div>
 
-        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <DashboardCard
             title="Store Inventory"
@@ -175,7 +206,6 @@ const StaffDashboard = ({ onSetupClick }) => {
           />
         </div>
 
-        {/* Stats Card */}
         <StatsCard isDarkMode={isDarkMode} />
       </div>
     </div>

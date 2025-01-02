@@ -11,14 +11,9 @@ import {
 import { 
   doc, 
   setDoc, 
-  getDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs 
+  getDoc
 } from 'firebase/firestore';
 import { getInitialTheme, setTheme, initializeThemeListener } from '../utils/theme';
-import { syncLocalStorageToFirestore } from '../utils/sync-utils';
 import { toast } from 'react-toastify';
 
 const Auth = () => {
@@ -83,10 +78,6 @@ const Auth = () => {
 
     await setDoc(doc(db, 'users', userCredential.user.uid), userData);
 
-    if (isAdmin) {
-      await syncLocalStorageToFirestore(userCredential.user.uid);
-    }
-
     toast.success(`${isAdmin ? 'Admin' : 'Staff'} account created successfully`);
     navigate(isAdmin ? '/admin/dashboard' : '/staff/dashboard');
   };
@@ -108,10 +99,6 @@ const Auth = () => {
     if ((isAdmin && userData.role !== 'admin') || (!isAdmin && userData.role !== 'staff')) {
       toast.error(`Access denied. Not an ${isAdmin ? 'admin' : 'staff'} account.`);
       return;
-    }
-
-    if (isAdmin) {
-      await syncLocalStorageToFirestore(userCredential.user.uid);
     }
 
     toast.success(`Welcome back, ${userData.username}!`);

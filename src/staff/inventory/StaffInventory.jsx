@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Store, Search, Edit } from 'lucide-react';
-import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { db } from '../../libs/firebase-config';
 import StaffNavbar from '../../components/StaffNavbar';
 import StaffUpdateInventory from './StaffUpdateInventory';
@@ -26,91 +27,74 @@ const StaffInventory = () => {
 
     const setupInventoryListener = async () => {
       try {
-        // Get user data and staff setup from localStorage
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        const staffSetup = JSON.parse(localStorage.getItem('staffSetup') || '{}');
-        const staffSetupCompleted = localStorage.getItem('staffSetupCompleted') === 'true';
-
-        setUserRole(user.role || 'staff');
-        
-        if (!staffSetupCompleted || !staffSetup.location) {
-          toast.error('Please complete your staff setup first');
+        const auth = getAuth();
+        if (!auth.currentUser) {
+          toast.error('Please sign in to view inventory');
           setLoading(false);
           return;
         }
 
-        setUserLocation(staffSetup.location);
+        // Get user data directly from Firestore
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (!userDoc.exists()) {
+          toast.error('User profile not found');
+          setLoading(false);
+          return;
+        }
 
-        // Query businesses collection to validate location and get store info
+        const userData = userDoc.data();
+        setUserRole(userData.role || 'staff');
+        setUserLocation(userData.location || null);
+
+        // Get business data to determine store ID
         const businessesRef = collection(db, 'businesses');
         const businessesSnapshot = await getDocs(businessesRef);
         
-        let validLocation = false;
         let currentStoreId = null;
         
         for (const doc of businessesSnapshot.docs) {
           const locations = doc.data().locations || [];
-          if (locations.includes(staffSetup.location)) {
-            validLocation = true;
-            currentStoreId = `store-${locations.indexOf(staffSetup.location) + 1}`;
+          const locationIndex = locations.findIndex(loc => loc === userData.location);
+          if (locationIndex !== -1) {
+            currentStoreId = `store-${locationIndex + 1}`;
             break;
           }
         }
 
-        if (!validLocation && user.role !== 'admin') {
-          toast.error('Invalid store location');
+        if (!currentStoreId && userData.role !== 'admin') {
+          toast.error('Store location not found');
           setLoading(false);
           return;
         }
 
         setStoreId(currentStoreId);
 
-        // Create query based on user's role and location
+        // Set up inventory listener based on user role and store
         const inventoryRef = collection(db, 'inventory');
         
-        if (user.role === 'admin') {
-          // Admin can see all inventory
+        if (userData.role === 'admin') {
           unsubscribeInventory = onSnapshot(inventoryRef, (snapshot) => {
-            const inventoryData = [];
-            snapshot.docs.forEach(doc => {
-              const items = doc.data().items || [];
-              items.forEach(item => {
-                inventoryData.push({
-                  id: doc.id,
-                  ...item
-                });
-              });
-            });
+            const inventoryData = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
             setInventory(inventoryData);
-            setLoading(false);
-          }, (error) => {
-            console.error('Error fetching inventory:', error);
-            toast.error('Error loading inventory');
             setLoading(false);
           });
         } else {
-          // Staff/Staff-admin can only see their location's inventory
-          const snapshot = await getDocs(inventoryRef);
-          const inventoryData = [];
-          
-          snapshot.docs.forEach(doc => {
-            const items = doc.data().items || [];
-            items.forEach(item => {
-              if (item.storeId === currentStoreId) {
-                inventoryData.push({
-                  id: doc.id,
-                  ...item
-                });
-              }
-            });
+          const storeQuery = query(inventoryRef, where('storeId', '==', currentStoreId));
+          unsubscribeInventory = onSnapshot(storeQuery, (snapshot) => {
+            const inventoryData = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setInventory(inventoryData);
+            setLoading(false);
           });
-          
-          setInventory(inventoryData);
-          setLoading(false);
         }
       } catch (error) {
-        console.error('Error setting up inventory listener:', error);
-        toast.error('Error connecting to database');
+        console.error('Error setting up inventory:', error);
+        toast.error('Error loading inventory data');
         setLoading(false);
       }
     };

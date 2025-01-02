@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import { doc, addDoc, updateDoc, collection } from 'firebase/firestore';
+import { doc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
 import { toast } from 'react-toastify';
 
@@ -17,31 +17,36 @@ const StaffUpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInve
     ageGroup: '',
     gender: '',
     storeId: selectedStore,
-    lastUpdated: new Date(),
-    updatedBy: '' // Will be set from auth
+    lastUpdated: serverTimestamp(),
+    updatedBy: '',
+    date: new Date().toLocaleDateString(),
+    time: new Date().toLocaleTimeString()
   });
 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Get current user info
     const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const staffSetup = JSON.parse(localStorage.getItem('staffSetup') || '{}');
     
     if (item) {
       setFormData({
         ...item,
         colors: Array.isArray(item.colors) ? item.colors.join(', ') : item.colors,
-        updatedBy: user.email || 'unknown'
+        updatedBy: user.email || 'unknown',
+        lastUpdated: serverTimestamp(),
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        storeId: selectedStore
       });
     } else {
       setFormData(prev => ({
         ...prev,
         storeId: selectedStore,
-        sizes: [],
-        colors: '',
-        stock: 0,
-        price: '',
-        updatedBy: user.email || 'unknown'
+        updatedBy: user.email || 'unknown',
+        lastUpdated: serverTimestamp(),
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString()
       }));
     }
   }, [item, selectedStore]);
@@ -62,14 +67,14 @@ const StaffUpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInve
         colors: formData.colors.split(',').map(color => color.trim()).filter(color => color),
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
-        storeId: selectedStore === 'all' ? null : selectedStore,
-        lastUpdated: new Date(),
+        storeId: selectedStore,
+        lastUpdated: serverTimestamp(),
+        createdAt: item ? item.createdAt : serverTimestamp()
       };
 
       if (item) {
         // Update existing item
-        const itemRef = doc(db, 'inventory', item.id);
-        await updateDoc(itemRef, processedData);
+        await setDoc(doc(db, 'inventory', item.id), processedData);
         toast.success('Item updated successfully');
       } else {
         // Add new item
@@ -191,7 +196,7 @@ const StaffUpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInve
           {/* Price */}
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-              Price ($)
+              Price (KES)
             </label>
             <input
               type="number"
