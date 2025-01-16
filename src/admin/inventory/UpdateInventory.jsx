@@ -1,37 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, HelpCircle } from 'lucide-react';
 import { addInventoryItem, updateInventoryItem } from '../../utils/admin-inventory';
 
 const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventoryUpdate }) => {
   const [formData, setFormData] = useState({
+    atNo: '',
     name: '',
     brand: '',
     category: '',
-    sizes: [],
+    sizes: '',
     colors: '',
     price: '',
     stock: 0,
+    incompletePairs: 0,
+    notes: '',
     ageGroup: '',
     gender: '',
     storeId: selectedStore
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showStockHelp, setShowStockHelp] = useState(false);
 
   useEffect(() => {
     if (item) {
       setFormData({
         ...item,
+        sizes: Array.isArray(item.sizes) ? item.sizes.join(', ') : item.sizes,
         colors: Array.isArray(item.colors) ? item.colors.join(', ') : item.colors,
+        incompletePairs: item.incompletePairs || 0,
+        notes: item.notes || ''
       });
     } else {
       setFormData(prev => ({
         ...prev,
+        atNo: '',
         storeId: selectedStore,
-        sizes: [],
+        sizes: '',
         colors: '',
         stock: 0,
+        incompletePairs: 0,
+        notes: '',
         price: ''
       }));
     }
@@ -40,8 +50,13 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.sizes.length) {
-      setError('Please select at least one size');
+    if (!formData.sizes.trim()) {
+      setError('Please enter at least one size');
+      return;
+    }
+
+    if (parseInt(formData.incompletePairs) > parseInt(formData.stock)) {
+      setError('Incomplete pairs cannot exceed total stock');
       return;
     }
 
@@ -51,9 +66,11 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
       
       const processedData = {
         ...formData,
+        sizes: formData.sizes.split(',').map(size => size.trim()).filter(size => size),
         colors: formData.colors.split(',').map(color => color.trim()).filter(color => color),
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
+        incompletePairs: parseInt(formData.incompletePairs),
         storeId: selectedStore === 'all' ? null : selectedStore
       };
 
@@ -71,6 +88,11 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
     } finally {
       setLoading(false);
     }
+  };
+
+  const calculateTotalShoes = () => {
+    const completePairs = parseInt(formData.stock) - parseInt(formData.incompletePairs);
+    return (completePairs * 2) + parseInt(formData.incompletePairs);
   };
 
   return (
@@ -99,6 +121,26 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          <div>
+            <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              @No
+            </label>
+            <input
+              type="text"
+              value={formData.atNo}
+              onChange={(e) => setFormData({ ...formData, atNo: e.target.value })}
+              className={`w-full p-2 rounded-lg border ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300'
+              }`}
+              pattern="[A-Za-z0-9]+"  // Only allow alphanumeric characters
+              required
+              disabled={loading}
+            />
+          </div>
+
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Product Name
@@ -159,6 +201,100 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
             </select>
           </div>
 
+          <div className="relative">
+            <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              <div className="flex items-center gap-2">
+                Total Pairs in Stock
+                <HelpCircle
+                  size={16}
+                  className="cursor-help text-gray-400"
+                  onMouseEnter={() => setShowStockHelp(true)}
+                  onMouseLeave={() => setShowStockHelp(false)}
+                />
+              </div>
+            </label>
+            {showStockHelp && (
+              <div className={`absolute z-10 right-0 w-64 p-3 rounded-lg shadow-lg ${
+                isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-white text-gray-700'
+              }`}>
+                Total pairs represents all pairs in stock, including both complete and incomplete pairs.
+              </div>
+            )}
+            <input
+              type="number"
+              value={formData.stock}
+              onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+              className={`w-full p-2 rounded-lg border ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300'
+              }`}
+              required
+              min="0"
+              disabled={loading}
+            />
+            <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Total number of pairs, both complete and incomplete
+            </p>
+          </div>
+
+          <div>
+            <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              Incomplete Pairs
+            </label>
+            <input
+              type="number"
+              value={formData.incompletePairs}
+              onChange={(e) => setFormData({ ...formData, incompletePairs: e.target.value })}
+              className={`w-full p-2 rounded-lg border ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300'
+              }`}
+              min="0"
+              max={formData.stock}
+              disabled={loading}
+            />
+            <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Number of pairs missing one shoe (cannot exceed total stock)
+            </p>
+          </div>
+
+          <div className="md:col-span-2">
+            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
+              <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-blue-800'}`}>
+                Stock Summary
+              </h3>
+              <div className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-blue-800'} space-y-1`}>
+                <p>• Total pairs in stock: {formData.stock}</p>
+                <p>• Complete pairs: {formData.stock - formData.incompletePairs} 
+                   ({(formData.stock - formData.incompletePairs) * 2} shoes)</p>
+                <p>• Incomplete pairs: {formData.incompletePairs} 
+                   ({formData.incompletePairs} individual shoes)</p>
+                <p>• Total individual shoes in stock: {calculateTotalShoes()}</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              Sizes (comma-separated)
+            </label>
+            <input
+              type="text"
+              value={formData.sizes}
+              onChange={(e) => setFormData({ ...formData, sizes: e.target.value })}
+              placeholder="e.g., 7, 8, 9.5, 10"
+              className={`w-full p-2 rounded-lg border ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300'
+              }`}
+              required
+              disabled={loading}
+            />
+          </div>
+
           <div>
             <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               Colors (comma-separated)
@@ -194,25 +330,6 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
               required
               min="0"
               step="0.01"
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-              Stock
-            </label>
-            <input
-              type="number"
-              value={formData.stock}
-              onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-              className={`w-full p-2 rounded-lg border ${
-                isDarkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300'
-              }`}
-              required
-              min="0"
               disabled={loading}
             />
           </div>
@@ -264,36 +381,20 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
 
         <div>
           <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-            Available Sizes
+            Notes About Incomplete Pairs
           </label>
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
-            {[4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12].map((size) => (
-              <label
-                key={size}
-                className={`flex items-center justify-center p-2 rounded-lg border cursor-pointer transition-colors ${
-                  formData.sizes.includes(size)
-                    ? 'bg-blue-500 text-white border-blue-500'
-                    : isDarkMode
-                    ? 'bg-gray-700 text-gray-200 border-gray-600 hover:bg-gray-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  className="hidden"
-                  checked={formData.sizes.includes(size)}
-                  onChange={(e) => {
-                    const newSizes = e.target.checked
-                      ? [...formData.sizes, size].sort((a, b) => a - b)
-                      : formData.sizes.filter((s) => s !== size);
-                    setFormData({ ...formData, sizes: newSizes });
-                  }}
-                  disabled={loading}
-                />
-                {size}
-              </label>
-            ))}
-          </div>
+          <textarea
+            value={formData.notes}
+            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            className={`w-full p-2 rounded-lg border ${
+              isDarkMode 
+                ? 'bg-gray-700 border-gray-600 text-white' 
+                : 'bg-white border-gray-300'
+            }`}
+            rows="3"
+            placeholder="Specify which shoes are missing (e.g., 'Size 9 missing left shoe', 'Size 10 missing right shoe')"
+            disabled={loading}
+          />
         </div>
 
         <div className="flex justify-end space-x-4">
