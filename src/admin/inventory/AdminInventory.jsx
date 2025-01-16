@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Store } from 'lucide-react';
+import { Plus, Store, History, Download } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
@@ -28,10 +28,16 @@ const InventoryPage = () => {
         const auth = getAuth();
         const user = auth.currentUser;
         
-        if (!user) return;
+        if (!user) {
+          setLoading(false);
+          return;
+        }
 
         const businessDoc = await getDoc(doc(db, 'businesses', user.uid));
-        if (!businessDoc.exists()) return;
+        if (!businessDoc.exists()) {
+          setLoading(false);
+          return;
+        }
 
         const businessData = businessDoc.data();
         const storeLocations = businessData.locations || [];
@@ -62,7 +68,11 @@ const InventoryPage = () => {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} flex items-center justify-center`}>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
+      </div>
+    );
   }
 
   return (
@@ -73,9 +83,14 @@ const InventoryPage = () => {
 
       <div className="container mx-auto px-4 pt-24 pb-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-          <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Inventory Management
-          </h1>
+          <div className="flex flex-col gap-2">
+            <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              Inventory Management
+            </h1>
+            <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Manage your inventory across all stores
+            </p>
+          </div>
 
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
             <div className="relative">
@@ -107,19 +122,22 @@ const InventoryPage = () => {
                 setSelectedItem(null);
                 setIsUpdateMode(!isUpdateMode);
               }}
-              className={`flex items-center px-4 py-2 rounded-lg ${
+              className={`flex items-center justify-center px-4 py-2 rounded-lg ${
                 isUpdateMode
                   ? 'bg-gray-500 hover:bg-gray-600'
                   : 'bg-blue-500 hover:bg-blue-600'
-              } text-white`}
+              } text-white min-w-[140px]`}
             >
               {isUpdateMode ? (
-                <>View Inventory</>
+                <div className="flex items-center gap-2">
+                  <History size={20} />
+                  View Inventory
+                </div>
               ) : (
-                <>
-                  <Plus size={20} className="mr-2" />
+                <div className="flex items-center gap-2">
+                  <Plus size={20} />
                   Add New Item
-                </>
+                </div>
               )}
             </motion.button>
           </div>

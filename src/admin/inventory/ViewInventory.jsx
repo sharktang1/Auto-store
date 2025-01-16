@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Edit, Trash2, AlertCircle, Info } from 'lucide-react';
+import { Search, Edit, Trash2, AlertCircle, Info, Download } from 'lucide-react';
 import { filterInventory, deleteInventoryItem } from '../../utils/admin-inventory';
 
 const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdate }) => {
   const [inventory, setInventory] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchParams, setSearchParams] = useState([]);
+  const [searchInput, setSearchInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showStockInfo, setShowStockInfo] = useState(false);
@@ -14,7 +15,27 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     const loadInventory = async () => {
       try {
         setLoading(true);
-        const filtered = await filterInventory(selectedStore, searchTerm);
+        let filtered = await filterInventory(selectedStore);
+        
+        // Apply multi-parameter search filtering
+        if (searchParams.length > 0) {
+          filtered = filtered.filter(item => {
+            return searchParams.every(param => {
+              const paramLower = param.toLowerCase().trim();
+              return (
+                item.atNo?.toLowerCase().includes(paramLower) ||
+                item.name?.toLowerCase().includes(paramLower) ||
+                item.brand?.toLowerCase().includes(paramLower) ||
+                item.category?.toLowerCase().includes(paramLower) ||
+                item.colors?.some(color => color.toLowerCase().includes(paramLower)) ||
+                item.sizes?.some(size => size.toString().includes(paramLower)) ||
+                item.gender?.toLowerCase().includes(paramLower) ||
+                item.ageGroup?.toLowerCase().includes(paramLower)
+              );
+            });
+          });
+        }
+
         const processedInventory = filtered.map(item => ({
           ...item,
           sizes: Array.isArray(item.sizes) ? item.sizes : (item.sizes || '').split(',').map(s => s.trim()).filter(Boolean),
@@ -33,19 +54,86 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     };
 
     loadInventory();
-  }, [selectedStore, searchTerm]);
+  }, [selectedStore, searchParams]);
+
+  const handleSearchInput = (e) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    
+    // Split the search input by '+' and trim each parameter
+    const params = value.split('+').map(param => param.trim()).filter(param => param.length > 0);
+    setSearchParams(params);
+  };
 
   const handleDelete = async (itemId) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         await deleteInventoryItem(itemId);
-        const updatedInventory = await filterInventory(selectedStore, searchTerm);
+        const updatedInventory = await filterInventory(selectedStore);
         setInventory(updatedInventory);
         if (onInventoryUpdate) onInventoryUpdate();
       } catch (err) {
         setError('Failed to delete item');
         console.error(err);
       }
+    }
+  };
+
+  const calculateTotalShoes = (item) => {
+    const completePairs = item.stock - item.incompletePairs;
+    return (completePairs * 2) + parseInt(item.incompletePairs);
+  };
+
+  const exportToCSV = () => {
+    try {
+      const headers = [
+        '@No',
+        'Product Name',
+        'Brand',
+        'Category',
+        'Price',
+        'Total Pairs',
+        'Complete Pairs',
+        'Incomplete Pairs',
+        'Total Shoes',
+        'Sizes',
+        'Colors',
+        'Age Group',
+        'Gender',
+        'Notes'
+      ];
+
+      const csvData = inventory.map(item => [
+        item.atNo,
+        item.name,
+        item.brand,
+        item.category,
+        item.price,
+        item.stock,
+        item.stock - item.incompletePairs,
+        item.incompletePairs,
+        calculateTotalShoes(item),
+        item.sizes.join(', '),
+        item.colors.join(', '),
+        item.ageGroup,
+        item.gender,
+        item.notes
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const date = new Date().toISOString().split('T')[0];
+      link.href = URL.createObjectURL(blob);
+      link.download = `inventory_snapshot_${date}.csv`;
+      link.click();
+    } catch (err) {
+      setError('Failed to export inventory');
+      console.error(err);
     }
   };
 
@@ -57,11 +145,6 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     );
   }
 
-  const calculateTotalShoes = (item) => {
-    const completePairs = item.stock - item.incompletePairs;
-    return (completePairs * 2) + parseInt(item.incompletePairs);
-  };
-
   return (
     <div className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
       <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -70,44 +153,61 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} />
             <input
               type="text"
-              placeholder="Search by name, brand, category..."
+              placeholder="Search by multiple parameters using + (e.g., @123 + red + 9.5)"
               className={`w-full pl-10 pr-4 py-2 rounded-lg border ${
                 isDarkMode 
                   ? 'bg-gray-700 border-gray-600 text-white' 
                   : 'bg-white border-gray-300'
               }`}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchInput}
+              onChange={handleSearchInput}
             />
           </div>
+          <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Use + to combine search parameters (e.g., @No + Color + Size)
+          </p>
         </div>
 
-        <div 
-          className="relative" 
-          onMouseEnter={() => setShowStockInfo(true)}
-          onMouseLeave={() => setShowStockInfo(false)}
-        >
-          <button
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
-              isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'
-            }`}
+        <div className="flex gap-4">
+          <div 
+            className="relative" 
+            onMouseEnter={() => setShowStockInfo(true)}
+            onMouseLeave={() => setShowStockInfo(false)}
           >
-            <Info size={20} />
-            Stock Info
-          </button>
-          {showStockInfo && (
-            <div className={`absolute right-0 mt-2 p-4 rounded-lg shadow-lg z-10 w-80 ${
-              isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-white text-gray-700'
-            }`}>
-              <h4 className="font-semibold mb-2">Understanding Stock Numbers:</h4>
-              <ul className="space-y-2 text-sm">
-                <li>• Total Pairs: All pairs in inventory (complete + incomplete)</li>
-                <li>• Complete Pairs: Pairs with both left and right shoes</li>
-                <li>• Incomplete Pairs: Pairs missing one shoe</li>
-                <li>• Total Shoes: Complete pairs × 2 + Incomplete pairs</li>
-              </ul>
-            </div>
-          )}
+            <button
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+                isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              <Info size={20} />
+              Stock Info
+            </button>
+            {showStockInfo && (
+              <div className={`absolute right-0 mt-2 p-4 rounded-lg shadow-lg z-10 w-80 ${
+                isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-white text-gray-700'
+              }`}>
+                <h4 className="font-semibold mb-2">Understanding Stock Numbers:</h4>
+                <ul className="space-y-2 text-sm">
+                  <li>• Total Pairs: All pairs in inventory (complete + incomplete)</li>
+                  <li>• Complete Pairs: Pairs with both left and right shoes</li>
+                  <li>• Incomplete Pairs: Pairs missing one shoe</li>
+                  <li>• Total Shoes: Complete pairs × 2 + Incomplete pairs</li>
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={exportToCSV}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+              isDarkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white'
+            } hover:opacity-90`}
+          >
+            <Download size={20} />
+            Export CSV
+          </motion.button>
         </div>
       </div>
 
@@ -122,7 +222,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
           <table className="w-full">
             <thead>
               <tr className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>
-                <th className="p-3 text-left">@No</th>  
+                <th className="p-3 text-left">@No</th>
                 <th className="p-3 text-left">Product</th>
                 <th className="p-3 text-left">Brand</th>
                 <th className="p-3 text-left">Category</th>
@@ -139,7 +239,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
             <tbody>
               {inventory.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="text-center p-4">
+                  <td colSpan="12" className="text-center p-4">
                     No items found
                   </td>
                 </tr>
