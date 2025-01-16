@@ -1,33 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { X, Search, ShoppingCart } from 'lucide-react';
-import { collection, addDoc, getDocs, query, where, doc, getDoc, runTransaction } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, runTransaction } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
 import { toast } from 'react-toastify';
 
-const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDarkMode }) => {
+const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, isDarkMode }) => {
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchParams, setSearchParams] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [showInventoryList, setShowInventoryList] = useState(false);
   const [saleData, setSaleData] = useState({
     productName: '',
     brand: '',
     size: '',
     quantity: 1,
     price: 0,
+    originalPrice: 0,
+    isHaggled: false,
     customerName: '',
     customerPhone: '',
     paymentMethod: 'cash'
   });
-  const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
-  const [showInventoryList, setShowInventoryList] = useState(false);
 
   useEffect(() => {
     const fetchInventory = async () => {
       if (!storeData?.id || !userId || !['staff', 'staff-admin'].includes(userRole)) {
-        console.error('Missing required information or unauthorized');
         toast.error('Error: Missing information or unauthorized access');
         setLoading(false);
         return;
@@ -39,10 +40,15 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
         const snapshot = await getDocs(inventoryQuery);
         const inventoryData = snapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
+          sizes: Array.isArray(doc.data().sizes) 
+            ? doc.data().sizes 
+            : (doc.data().sizes || '').split(',').map(s => s.trim()).filter(Boolean),
+          colors: Array.isArray(doc.data().colors) 
+            ? doc.data().colors 
+            : (doc.data().colors || '').split(',').map(c => c.trim()).filter(Boolean)
         }));
         setInventory(inventoryData);
-        setFilteredInventory(inventoryData);
       } catch (error) {
         console.error('Error fetching inventory:', error);
         toast.error('Error loading inventory data');
@@ -55,20 +61,37 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
   }, [storeData, userId, userRole]);
 
   useEffect(() => {
-    if (inventory.length > 0 && searchTerm) {
+    if (inventory.length > 0 && searchParams.length > 0) {
       const filtered = inventory.filter(item => {
-        const searchStr = searchTerm.toLowerCase();
-        return (
-          item.name?.toLowerCase().includes(searchStr) ||
-          item.brand?.toLowerCase().includes(searchStr) ||
-          item.category?.toLowerCase().includes(searchStr)
-        );
+        return searchParams.every(param => {
+          const paramLower = param.toLowerCase().trim();
+          return (
+            item.atNo?.toLowerCase().includes(paramLower) ||
+            item.name?.toLowerCase().includes(paramLower) ||
+            item.brand?.toLowerCase().includes(paramLower) ||
+            item.category?.toLowerCase().includes(paramLower) ||
+            item.colors?.some(color => color.toLowerCase().includes(paramLower)) ||
+            item.sizes?.some(size => size.toString().includes(paramLower)) ||
+            item.gender?.toLowerCase().includes(paramLower) ||
+            item.ageGroup?.toLowerCase().includes(paramLower)
+          );
+        });
       });
+      
       setFilteredInventory(filtered);
+      setShowInventoryList(filtered.length > 0);
     } else {
-      setFilteredInventory(inventory);
+      setFilteredInventory([]);
+      setShowInventoryList(false);
     }
-  }, [inventory, searchTerm]);
+  }, [inventory, searchParams]);
+
+  const handleSearchInput = (e) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    const params = value.split('+').map(param => param.trim()).filter(param => param.length > 0);
+    setSearchParams(params);
+  };
 
   const handleProductSelect = (product) => {
     if (!product) {
@@ -82,9 +105,22 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
       productName: product.name || '',
       brand: product.brand || '',
       price: product.price || 0,
+      originalPrice: product.price || 0,
+      isHaggled: false,
       size: ''
     }));
     setShowInventoryList(false);
+    setSearchInput('');
+    setSearchParams([]);
+  };
+
+  const handlePriceChange = (e) => {
+    const newPrice = parseFloat(e.target.value) || 0;
+    setSaleData(prev => ({
+      ...prev,
+      price: newPrice,
+      isHaggled: newPrice !== prev.originalPrice
+    }));
   };
 
   const validateSaleData = () => {
@@ -92,27 +128,26 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
       toast.error('Please select a product');
       return false;
     }
-
     if (!saleData.size) {
       toast.error('Please select a size');
       return false;
     }
-
     if (!saleData.quantity || saleData.quantity < 1) {
       toast.error('Please enter a valid quantity');
       return false;
     }
-
     if (saleData.quantity > selectedProduct.stock) {
       toast.error(`Insufficient stock. Only ${selectedProduct.stock} units available`);
       return false;
     }
-
+    if (!saleData.price || saleData.price <= 0) {
+      toast.error('Please enter a valid price');
+      return false;
+    }
     if (!saleData.paymentMethod) {
       toast.error('Please select a payment method');
       return false;
     }
-
     return true;
   };
 
@@ -124,15 +159,12 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
       return;
     }
 
-    if (!validateSaleData()) {
-      return;
-    }
+    if (!validateSaleData()) return;
 
     setProcessing(true);
 
     try {
       await runTransaction(db, async (transaction) => {
-        // Check product exists and has sufficient stock
         const productRef = doc(db, 'inventory', selectedProduct.id);
         const productDoc = await transaction.get(productRef);
         
@@ -145,8 +177,8 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
           throw new Error(`Insufficient stock. Only ${productData.stock} units available`);
         }
 
-        // Create sale record
-        const saleRecord = {
+        const saleRef = doc(collection(db, 'sales'));
+        transaction.set(saleRef, {
           ...saleData,
           productId: selectedProduct.id,
           storeId: storeData.id,
@@ -154,14 +186,14 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
           storeNumber: storeData.storeNumber,
           userId,
           timestamp: new Date(),
-          total: saleData.price * saleData.quantity
-        };
+          total: saleData.price * saleData.quantity,
+          originalPrice: saleData.originalPrice,
+          priceHaggled: saleData.isHaggled,
+          discountAmount: saleData.isHaggled ? saleData.originalPrice - saleData.price : 0,
+          discountPercentage: saleData.isHaggled ? 
+            ((saleData.originalPrice - saleData.price) / saleData.originalPrice * 100).toFixed(2) : 0
+        });
 
-        // Add sale
-        const saleRef = doc(collection(db, 'sales'));
-        transaction.set(saleRef, saleRecord);
-
-        // Update inventory
         transaction.update(productRef, {
           stock: productData.stock - saleData.quantity
         });
@@ -179,7 +211,7 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-8">
+      <div className="flex justify-center items-center p-8">
         <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${
           isDarkMode ? 'border-white' : 'border-blue-500'
         }`} />
@@ -187,48 +219,63 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
     );
   }
 
+  const inputClasses = `w-full px-4 py-2 rounded-lg border transition-colors duration-200 ${
+    isDarkMode 
+      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+      : 'bg-white border-gray-300 placeholder-gray-500'
+  }`;
+
+  const buttonClasses = {
+    primary: `flex items-center justify-center px-6 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 
+      text-white transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed`,
+    secondary: `px-6 py-2 rounded-lg transition-colors duration-200 ${
+      isDarkMode
+        ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+        : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+    }`
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}
-    >
+    <div className={`w-full max-w-4xl mx-auto rounded-lg shadow-lg ${
+      isDarkMode ? 'bg-gray-800' : 'bg-white'
+    } p-6`}>
       <div className="flex justify-between items-center mb-6">
-        <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Record New Sale
+        <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          New Sale
         </h2>
         <button
           onClick={onClose}
-          className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+          className={`p-2 rounded-full transition-colors duration-200 ${
+            isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+          }`}
         >
-          <X size={20} className={isDarkMode ? 'text-gray-200' : 'text-gray-900'} />
+          <X className={isDarkMode ? 'text-gray-200' : 'text-gray-900'} size={24} />
         </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="relative">
-          <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+          <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
             Search Product
           </label>
           <div className="relative">
+            <Search 
+              className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`} 
+              size={20} 
+            />
             <input
               type="text"
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setShowInventoryList(true);
-              }}
-              placeholder="Search by name, brand, or category"
-              className={`w-full pl-10 pr-4 py-2 rounded-lg border ${
-                isDarkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 placeholder-gray-500'
-              }`}
+              value={searchInput}
+              onChange={handleSearchInput}
+              placeholder="Search using multiple parameters (e.g., @123 + red + 9.5)"
+              className={`${inputClasses} pl-10`}
             />
-            <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`} size={20} />
           </div>
+          <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Use + to combine search parameters (e.g., @No + Color + Size)
+          </p>
 
           {showInventoryList && filteredInventory.length > 0 && (
             <div className={`absolute z-10 w-full mt-1 rounded-lg shadow-lg ${
@@ -238,17 +285,20 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
                 <div
                   key={item.id}
                   onClick={() => handleProductSelect(item)}
-                  className={`p-3 cursor-pointer ${
+                  className={`p-4 cursor-pointer ${
                     isDarkMode 
                       ? 'hover:bg-gray-600 border-gray-600' 
                       : 'hover:bg-gray-50 border-gray-200'
                   } border-b last:border-b-0`}
                 >
                   <div className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                    {item.name}
+                    {item.atNo} - {item.name}
                   </div>
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <div className={`text-sm mt-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     {item.brand} - KES {item.price?.toFixed(2)} (Stock: {item.stock})
+                  </div>
+                  <div className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Sizes: {item.sizes.join(', ')} | Colors: {item.colors.join(', ')}
                   </div>
                 </div>
               ))}
@@ -259,17 +309,13 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
         {selectedProduct && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                 Size
               </label>
               <select
                 value={saleData.size}
                 onChange={(e) => setSaleData({ ...saleData, size: e.target.value })}
-                className={`w-full p-2 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300'
-                }`}
+                className={inputClasses}
                 required
               >
                 <option value="">Select Size</option>
@@ -280,7 +326,7 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
             </div>
 
             <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                 Quantity
               </label>
               <input
@@ -289,59 +335,44 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
                 max={selectedProduct.stock}
                 value={saleData.quantity}
                 onChange={(e) => setSaleData({ ...saleData, quantity: parseInt(e.target.value) || 0 })}
-                className={`w-full p-2 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300'
-                }`}
+                className={inputClasses}
                 required
               />
             </div>
 
             <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                Customer Name (Optional)
+              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                Price (KES)
               </label>
-              <input
-                type="text"
-                value={saleData.customerName}
-                onChange={(e) => setSaleData({ ...saleData, customerName: e.target.value })}
-                className={`w-full p-2 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300'
-                }`}
-              />
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={saleData.price}
+                  onChange={handlePriceChange}
+                  className={`${inputClasses} ${saleData.isHaggled ? 'border-yellow-500 border-2' : ''}`}
+                  required
+                />
+                {saleData.isHaggled && (
+                  <div className={`mt-1 text-sm ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                    <span>Original: KES {saleData.originalPrice.toFixed(2)}</span>
+                    <span className="ml-2">
+                      Discount: {((saleData.originalPrice - saleData.price) / saleData.originalPrice * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                Customer Phone (Optional)
-              </label>
-              <input
-                type="tel"
-                value={saleData.customerPhone}
-                onChange={(e) => setSaleData({ ...saleData, customerPhone: e.target.value })}
-                className={`w-full p-2 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300'
-                }`}
-              />
-            </div>
-
-            <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                 Payment Method
               </label>
               <select
                 value={saleData.paymentMethod}
                 onChange={(e) => setSaleData({ ...saleData, paymentMethod: e.target.value })}
-                className={`w-full p-2 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300'
-                }`}
+                className={inputClasses}
                 required
               >
                 <option value="cash">Cash</option>
@@ -350,52 +381,78 @@ const MakeSale = ({ storeData, userId, userRole, onClose, onSaleComplete, isDark
               </select>
             </div>
 
-            <div className="flex items-end">
-              <div className={`w-full p-4 rounded-lg ${
-                isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
-              }`}>
-                <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Total Amount
+            <div>
+              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                Customer Name (Optional)
+              </label>
+              <input
+                type="text"
+                value={saleData.customerName}
+                onChange={(e) => setSaleData({ ...saleData, customerName: e.target.value })}
+                className={inputClasses}
+              />
+            </div>
+
+            <div>
+              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                Customer Phone (Optional)
+              </label>
+              <input
+                type="tel"
+                value={saleData.customerPhone}
+                onChange={(e) => setSaleData({ ...saleData, customerPhone: e.target.value })}
+                className={inputClasses}
+              />
+            </div>
+
+            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+              <div className="space-y-2">
+                <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span>Unit Price:</span>
+                  <span>KES {saleData.price.toFixed(2)}</span>
                 </div>
-                <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  KES {(saleData.price * saleData.quantity).toFixed(2)}
+                <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span>Quantity:</span>
+                  <span>{saleData.quantity}</span>
+                </div>
+                {saleData.isHaggled && (
+                  <div className={`flex justify-between ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                    <span>Discount:</span>
+                    <span>KES {((saleData.originalPrice - saleData.price) * saleData.quantity).toFixed(2)}</span>
+                  </div>
+                )}
+                <div className={`flex justify-between text-lg font-bold pt-2 border-t ${
+                  isDarkMode ? 'text-white border-gray-600' : 'text-gray-900 border-gray-300'
+                }`}>
+                  <span>Total:</span>
+                  <span>KES {(saleData.price * saleData.quantity).toFixed(2)}</span>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        <div className="flex justify-end space-x-4">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+        <div className="flex justify-end space-x-4 pt-6">
+          <button
             type="button"
             onClick={onClose}
-            className={`px-4 py-2 rounded-lg ${
-              isDarkMode
-                ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-            }`}
+            className={buttonClasses.secondary}
             disabled={processing}
           >
             Cancel
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+          </button>
+          <button
             type="submit"
-            className={`flex items-center px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white ${
-              processing ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
+            className={buttonClasses.primary}
             disabled={processing}
           >
             <ShoppingCart size={20} className="mr-2" />
             {processing ? 'Processing...' : 'Complete Sale'}
-          </motion.button>
+          </button>
         </div>
       </form>
-    </motion.div>
-  );
+    </div>
+    );
 };
 
-export default MakeSale;
+export default MakeSalePage;
