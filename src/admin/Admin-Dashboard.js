@@ -195,21 +195,21 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <DashboardCard
           title="Total Inventory"
-          value="1,234"
+          value="0000"
           icon={Package}
           color="bg-blue-500"
           to="/admin/inventory"  // Updated path to match the route
         />
           <DashboardCard
             title="Total Sales"
-            value="$45,678"
+            value="ksh"
             icon={DollarSign}
             color="bg-green-500"
             to="/admin/sales"
           />
           <DashboardCard
             title="Active Staff"
-            value="23"
+            value="00"
             icon={Users}
             color="bg-purple-500"
             to="/admin/staff"

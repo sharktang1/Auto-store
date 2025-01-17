@@ -1,34 +1,62 @@
-import React from 'react';
-import { Loader2 } from 'lucide-react';
+// AdminStats.jsx
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import Navbar from '../../components/Navbar';
+import { StatsSelector } from './StatsSelector';
+import { SalesStats } from './SalesStats';
+import InventoryStats from './InventoryStats'; // Changed to default import
+import { StaffStats } from './StaffStats';
+import StoresStats from './StoresStats';
+import { getInitialTheme } from '../../utils/theme';
 
-const ComingSoon = ({ title = "Coming Soon", description = "This feature is under development" }) => {
+const AdminStats = () => {
+  const [isDarkMode] = useState(getInitialTheme());
+  const [activeTab, setActiveTab] = useState('sales');
+
+  const renderStats = () => {
+    const props = { isDarkMode };
+    
+    switch (activeTab) {
+      case 'sales':
+        return <SalesStats {...props} />;
+      case 'inventory':
+        return <InventoryStats {...props} />;
+      case 'staff':
+        return <StaffStats {...props} />;
+      case 'stores':
+        return <StoresStats {...props} />;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] p-8 bg-gradient-to-b from-gray-50 to-gray-100 rounded-lg border border-gray-200">
-      <div className="text-center space-y-6 max-w-md">
-        {/* Animated loading icon */}
-        <div className="flex justify-center">
-          <Loader2 className="h-12 w-12 text-blue-500 animate-spin" />
-        </div>
-        
-        {/* Title */}
-        <h2 className="text-3xl font-bold text-gray-900">
-          {title}
-        </h2>
-        
-        {/* Description */}
-        <p className="text-gray-600">
-          {description}
-        </p>
-        
-        {/* Decorative element */}
-        <div className="flex justify-center gap-2">
-          <div className="h-2 w-2 bg-blue-400 rounded-full animate-bounce" />
-          <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce delay-100" />
-          <div className="h-2 w-2 bg-blue-600 rounded-full animate-bounce delay-200" />
-        </div>
+    <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
+      <Navbar />
+      
+      <div className="container mx-auto px-4 pt-24 pb-8">
+        <h1 className={`text-3xl font-bold mb-8 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          Statistics & Analytics
+        </h1>
+
+        <StatsSelector
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          isDarkMode={isDarkMode}
+        />
+
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.2 }}
+        >
+          {renderStats()}
+        </motion.div>
       </div>
     </div>
   );
 };
 
-export default ComingSoon;
+export default AdminStats;
