@@ -23,7 +23,7 @@ import AdminStaff from './admin/staff/AdminStaff';
 import StaffInventory from './staff/inventory/StaffInventory';
 import StaffSales from './staff/sales/StaffSales';
 import StaffStats from './staff/stats/StaffStats';
-import Staffleaderboard from './staff/Leaderboard/staffleaderboard';
+import Stafflender from './staff/KOPA/stafflender';
 
 import { getInitialTheme } from './utils/theme';
 
@@ -187,7 +187,7 @@ function App() {
           <Route path="/staff/inventory" element={<ProtectedRoute><StaffInventory /></ProtectedRoute>} />
           <Route path="/staff/sales" element={<ProtectedRoute><StaffSales /></ProtectedRoute>} />
           <Route path="/staff/stats" element={<ProtectedRoute><StaffStats /></ProtectedRoute>} />
-          <Route path="/staff/Leaderboard" element={<ProtectedRoute><Staffleaderboard /></ProtectedRoute>} />
+          <Route path="/staff/KOPA" element={<ProtectedRoute><Stafflender /></ProtectedRoute>} />
         </Routes>
       </div>
     </Router>

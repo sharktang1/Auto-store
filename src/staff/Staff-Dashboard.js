@@ -198,10 +198,10 @@ const StaffDashboard = () => {
             onClick={() => navigate('/staff/sales')}
           />
           <DashboardCard
-            title="Leaderboard"
+            title="Lender"
             icon={TrendingUp}
             color="bg-orange-500"
-            onClick={() => navigate('/staff/Leaderboard')}
+            onClick={() => navigate('/staff/KOPA')}
           />
         </div>
 
