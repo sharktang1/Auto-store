@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   DollarSign, 
-  Calendar,
   Download,
   Search,
   Store,
@@ -11,14 +10,14 @@ import {
   ArrowUpDown,
   ChevronDown
 } from 'lucide-react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
 import { getInitialTheme, initializeThemeListener } from '../../utils/theme';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const AdminSales = () => {
+  // Previous state declarations remain the same
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
   const [sales, setSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
@@ -29,13 +28,13 @@ const AdminSales = () => {
   const [endDate, setEndDate] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'timestamp', direction: 'desc' });
   const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
+  const [staffData, setStaffData] = useState({});
   const [salesMetrics, setSalesMetrics] = useState({
     totalSales: 0,
     totalQuantity: 0,
-    averageOrderValue: 0,
-    storeSales: {},
-    staffSales: {}
+    averageOrderValue: 0
   });
+
 
   const timeFilterOptions = [
     { value: 'all', label: 'All Time' },
@@ -45,12 +44,11 @@ const AdminSales = () => {
     { value: 'year', label: 'This Year' }
   ];
 
+  // Effects
   useEffect(() => {
     const cleanup = initializeThemeListener(setIsDarkMode);
     fetchSales();
-    return () => {
-      if (cleanup) cleanup();
-    };
+    return () => cleanup?.();
   }, []);
 
   useEffect(() => {
@@ -65,41 +63,84 @@ const AdminSales = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  
+  // Updated fetchStaffData function to include more user details
+  const fetchStaffData = async (userId) => {
+    if (!userId) return { 
+      name: 'Unknown Staff',
+      username: 'unknown',
+      role: 'staff',
+      location: 'Unknown'
+    };
+
+    try {
+      if (staffData[userId]) return staffData[userId];
+
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (!userDoc.exists()) return { 
+        name: 'Unknown Staff',
+        username: 'unknown',
+        role: 'staff',
+        location: 'Unknown'
+      };
+
+      const userData = userDoc.data();
+      const staffInfo = {
+        name: `${userData.firstName} ${userData.lastName}`,
+        username: userData.username || 'unknown',
+        role: userData.role || 'staff',
+        location: userData.location || 'Unknown'
+      };
+
+      setStaffData(prev => ({ ...prev, [userId]: staffInfo }));
+      return staffInfo;
+    } catch (error) {
+      console.error('Error fetching staff data:', error);
+      return { 
+        name: 'Unknown Staff',
+        username: 'unknown',
+        role: 'staff',
+        location: 'Unknown'
+      };
+    }
+  };
+
+
+  // Updated fetchSales function
   const fetchSales = () => {
     try {
       const salesRef = collection(db, 'sales');
-      const salesQuery = query(
-        salesRef,
-        orderBy('timestamp', 'desc')
-      );
+      const salesQuery = query(salesRef, orderBy('timestamp', 'desc'));
 
-      const unsubscribe = onSnapshot(
-        salesQuery,
-        (snapshot) => {
-          try {
-            const salesData = snapshot.docs.map(doc => ({
+      const unsubscribe = onSnapshot(salesQuery, async (snapshot) => {
+        try {
+          const salesPromises = snapshot.docs.map(async (doc) => {
+            const saleData = doc.data();
+            const staffInfo = await fetchStaffData(saleData.userId);
+
+            return {
               id: doc.id,
-              ...doc.data(),
-              timestamp: doc.data().timestamp?.toDate() || new Date(),
-              total: doc.data().total || doc.data().price * doc.data().quantity || 0
-            }));
-            
-            setSales(salesData);
-            setFilteredSales(salesData);
-            calculateMetrics(salesData);
-            setLoading(false);
-          } catch (error) {
-            console.error('Error processing sales data:', error);
-            toast.error('Error processing sales data');
-            setLoading(false);
-          }
-        },
-        (error) => {
-          console.error('Error in sales query:', error);
-          toast.error(`Error loading sales data: ${error.message}`);
+              ...saleData,
+              timestamp: saleData.timestamp?.toDate() || new Date(),
+              total: saleData.total || saleData.price * saleData.quantity || 0,
+              staffName: staffInfo.name,
+              staffUsername: staffInfo.username,
+              staffRole: staffInfo.role,
+              staffLocation: staffInfo.location
+            };
+          });
+
+          const salesData = await Promise.all(salesPromises);
+          setSales(salesData);
+          setFilteredSales(salesData);
+          calculateMetrics(salesData);
+          setLoading(false);
+        } catch (error) {
+          console.error('Error processing sales data:', error);
+          toast.error('Error processing sales data');
           setLoading(false);
         }
-      );
+      });
 
       return () => unsubscribe();
     } catch (error) {
@@ -109,31 +150,38 @@ const AdminSales = () => {
     }
   };
 
+  // Updated search function to include username
+  const handleSearch = (e) => {
+    const term = e.target.value.toLowerCase();
+    setSearchTerm(term);
+
+    const filtered = sales.filter(sale =>
+      sale.staffName.toLowerCase().includes(term) ||
+      sale.staffUsername.toLowerCase().includes(term) ||
+      sale.storeLocation.toLowerCase().includes(term) ||
+      sale.productName.toLowerCase().includes(term) ||
+      sale.customerName?.toLowerCase().includes(term)
+    );
+
+    setFilteredSales(filtered);
+    calculateMetrics(filtered);
+  };
+
+  // Metrics calculation
   const calculateMetrics = (salesData) => {
-    const metrics = salesData.reduce((acc, sale) => {
-      acc.totalSales += sale.total || 0;
-      acc.totalQuantity += sale.quantity || 0;
-
-      if (sale.storeLocation) {
-        acc.storeSales[sale.storeLocation] = (acc.storeSales[sale.storeLocation] || 0) + (sale.total || 0);
-      }
-
-      if (sale.customerName) {
-        acc.staffSales[sale.customerName] = (acc.staffSales[sale.customerName] || 0) + (sale.total || 0);
-      }
-
-      return acc;
-    }, {
+    const metrics = salesData.reduce((acc, sale) => ({
+      totalSales: acc.totalSales + (sale.total || 0),
+      totalQuantity: acc.totalQuantity + (sale.quantity || 0)
+    }), {
       totalSales: 0,
-      totalQuantity: 0,
-      storeSales: {},
-      staffSales: {}
+      totalQuantity: 0
     });
 
     metrics.averageOrderValue = salesData.length > 0 ? metrics.totalSales / salesData.length : 0;
     setSalesMetrics(metrics);
   };
 
+  // Filtering functions
   const handleTimeFilterSelect = (value) => {
     setTimeFilter(value);
     filterSalesByTime(value);
@@ -185,19 +233,7 @@ const AdminSales = () => {
     calculateMetrics(filtered);
   };
 
-  const handleSearch = (e) => {
-    const term = e.target.value.toLowerCase();
-    setSearchTerm(term);
-
-    const filtered = sales.filter(sale =>
-      sale.customerName.toLowerCase().includes(term) ||
-      sale.storeLocation.toLowerCase().includes(term) ||
-      sale.productName.toLowerCase().includes(term)
-    );
-
-    setFilteredSales(filtered);
-    calculateMetrics(filtered);
-  };
+  
 
   const handleSort = (key) => {
     setSortConfig(prevConfig => ({
@@ -206,17 +242,19 @@ const AdminSales = () => {
     }));
 
     const sorted = [...filteredSales].sort((a, b) => {
-      if (sortConfig.direction === 'asc') {
-        return a[key] > b[key] ? 1 : -1;
+      const direction = sortConfig.direction === 'asc' ? 1 : -1;
+      if (typeof a[key] === 'string') {
+        return direction * a[key].localeCompare(b[key]);
       }
-      return a[key] < b[key] ? 1 : -1;
+      return direction * (a[key] - b[key]);
     });
 
     setFilteredSales(sorted);
   };
 
+  // Export function
   const exportToCSV = () => {
-    const headers = ['Date', 'Store', 'Product', 'Quantity', 'Price', 'Total', 'Payment Method', 'Customer'];
+    const headers = ['Date', 'Store', 'Product', 'Quantity', 'Price', 'Total', 'Payment Method', 'Staff', 'Customer'];
     const csvData = filteredSales.map(sale => [
       sale.timestamp.toLocaleDateString(),
       sale.storeLocation,
@@ -225,6 +263,7 @@ const AdminSales = () => {
       sale.price,
       sale.total,
       sale.paymentMethod,
+      sale.staffName,
       sale.customerName
     ]);
 
@@ -248,6 +287,7 @@ const AdminSales = () => {
       </div>
 
       <div className="container mx-auto px-4 pt-24 pb-8">
+        {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             Sales Dashboard
@@ -255,7 +295,7 @@ const AdminSales = () => {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-lg"
+            className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
             onClick={exportToCSV}
           >
             <Download size={20} />
@@ -264,7 +304,7 @@ const AdminSales = () => {
         </div>
 
         {/* Metrics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <motion.div
             whileHover={{ scale: 1.02 }}
             className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}
@@ -314,6 +354,7 @@ const AdminSales = () => {
         {/* Filters Section */}
         <div className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} mb-8`}>
           <div className="flex flex-wrap gap-4">
+            {/* Search Input */}
             <div className="flex-1">
               <div className="relative">
                 <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
@@ -324,8 +365,8 @@ const AdminSales = () => {
                   onChange={handleSearch}
                   className={`w-full pl-10 pr-4 py-2 rounded-lg border ${
                     isDarkMode 
-                      ? 'bg-gray-700 border-gray-600 text-white' 
-                      : 'bg-white border-gray-300 text-gray-900'
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
                   }`}
                 />
               </div>
@@ -367,6 +408,7 @@ const AdminSales = () => {
             </div>
           </div>
 
+          {/* Date Range Filters */}
           <div className="flex flex-wrap gap-4 mt-4">
             <input
               type="date"
@@ -400,7 +442,11 @@ const AdminSales = () => {
                 setEndDate('');
                 filterSalesByTime('all');
               }}
-              className="flex items-center space-x-2 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-100"
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg border ${
+                isDarkMode 
+                  ? 'border-gray-600 hover:bg-gray-700 text-gray-300' 
+                  : 'border-gray-300 hover:bg-gray-100 text-gray-700'
+              }`}
             >
               <FilterX size={20} />
               <span>Clear Filters</span>
@@ -411,72 +457,80 @@ const AdminSales = () => {
         {/* Sales Table */}
         <div className={`rounded-lg shadow-md overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className={isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                <tr>
-                  {[
-                    { key: 'timestamp', label: 'Date' },
-                    { key: 'storeLocation', label: 'Store' },
-                    { key: 'productName', label: 'Product' },
-                    { key: 'quantity', label: 'Quantity' },
-                    { key: 'price', label: 'Price' },
-                    { key: 'total', label: 'Total' },
-                    { key: 'paymentMethod', label: 'Payment' },
-                    { key: 'customerName', label: 'Customer' }
-                  ].map((column) => (
-                    <th
-                      key={column.key}
-                      onClick={() => handleSort(column.key)}
-                      className={`px-6 py-3 text-left cursor-pointer ${
-                        isDarkMode ? 'text-gray-200' : 'text-gray-700'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-1">
-                        <span>{column.label}</span>
-                        <ArrowUpDown size={14} />
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSales.map((sale) => (
-                  <tr
-                    key={sale.id}
-                    className={`border-t ${
-                      isDarkMode 
-                        ? 'border-gray-700 hover:bg-gray-700' 
-                        : 'border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      {sale.timestamp.toLocaleDateString()}
-                    </td>
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      {sale.storeLocation}
-                    </td>
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      {sale.productName}
-                    </td>
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      {sale.quantity}
-                    </td>
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      ${sale.price}
-                    </td>
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      ${sale.total}
-                    </td>
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      {sale.paymentMethod}
-                    </td>
-                    <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                      {sale.customerName}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <table className="w-full">
+      <thead className={isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}>
+        <tr>
+          {[
+            { key: 'timestamp', label: 'Date' },
+            { key: 'storeLocation', label: 'Store' },
+            { key: 'productName', label: 'Product' },
+            { key: 'quantity', label: 'Quantity' },
+            { key: 'price', label: 'Price' },
+            { key: 'total', label: 'Total' },
+            { key: 'paymentMethod', label: 'Payment' },
+            { key: 'staffName', label: 'Staff Name' },
+            { key: 'staffUsername', label: 'Username' },
+            { key: 'customerName', label: 'Customer' }
+          ].map((column) => (
+            <th
+              key={column.key}
+              onClick={() => handleSort(column.key)}
+              className={`px-6 py-3 text-left cursor-pointer ${
+                isDarkMode ? 'text-gray-200' : 'text-gray-700'
+              }`}
+            >
+              <div className="flex items-center space-x-1">
+                <span>{column.label}</span>
+                <ArrowUpDown size={14} />
+              </div>
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {filteredSales.map((sale) => (
+          <tr
+            key={sale.id}
+            className={`border-t ${
+              isDarkMode 
+                ? 'border-gray-700 hover:bg-gray-700' 
+                : 'border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.timestamp.toLocaleDateString()}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.storeLocation}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.productName}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.quantity}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              ${sale.price}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              ${sale.total}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.paymentMethod}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.staffName}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.staffUsername}
+            </td>
+            <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+              {sale.customerName}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
           </div>
 
           {filteredSales.length === 0 && !loading && (
@@ -486,83 +540,6 @@ const AdminSales = () => {
               </p>
             </div>
           )}
-        </div>
-
-        {/* Sales Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-          {/* Store Sales Chart */}
-          <div className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <h3 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              Sales by Store
-            </h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={Object.entries(salesMetrics.storeSales).map(([store, total]) => ({
-                    name: store,
-                    value: total
-                  }))}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{ fill: isDarkMode ? '#9CA3AF' : '#4B5563' }}
-                  />
-                  <YAxis 
-                    tick={{ fill: isDarkMode ? '#9CA3AF' : '#4B5563' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: isDarkMode ? '#374151' : '#FFFFFF',
-                      border: 'none',
-                      borderRadius: '8px',
-                      boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-                    }}
-                    labelStyle={{ color: isDarkMode ? '#FFFFFF' : '#000000' }}
-                  />
-                  <Bar dataKey="value" fill="#F97316" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Staff Sales Chart */}
-          <div className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <h3 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              Sales by Staff
-            </h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={Object.entries(salesMetrics.staffSales).map(([staff, total]) => ({
-                    name: staff,
-                    value: total
-                  }))}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{ fill: isDarkMode ? '#9CA3AF' : '#4B5563' }}
-                  />
-                  <YAxis 
-                    tick={{ fill: isDarkMode ? '#9CA3AF' : '#4B5563' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: isDarkMode ? '#374151' : '#FFFFFF',
-                      border: 'none',
-                      borderRadius: '8px',
-                      boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-                    }}
-                    labelStyle={{ color: isDarkMode ? '#FFFFFF' : '#000000' }}
-                  />
-                  <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
         </div>
       </div>
     </div>
