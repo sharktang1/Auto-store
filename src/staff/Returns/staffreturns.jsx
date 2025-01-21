@@ -1,187 +1,198 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Search, RotateCcw, Calendar, Store } from 'lucide-react';
-import { collection, query, where, getDocs, runTransaction, doc, addDoc, Timestamp } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { db } from '../../libs/firebase-config';
+import { Search, RotateCcw, Store } from 'lucide-react';
+import { collection, query, where, getDocs, addDoc, Timestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db , auth} from '../../libs/firebase-config';
 import StaffNavbar from '../../components/StaffNavbar';
 import { getInitialTheme, initializeThemeListener } from '../../utils/theme';
 import { toast } from 'react-toastify';
 
 const StaffReturn = () => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
-  const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [searchInput, setSearchInput] = useState('');
-  const [searchParams, setSearchParams] = useState([]);
-  const [salesData, setSalesData] = useState([]);
-  const [filteredSales, setFilteredSales] = useState([]);
-  const [selectedSale, setSelectedSale] = useState(null);
-  const [returnReason, setReturnReason] = useState('');
-  const [storeData, setStoreData] = useState({
-    id: null,
-    location: null,
-    storeNumber: null
+  const [stores, setStores] = useState([]);
+  const [storeData, setStoreData] = useState({ id: null, location: null, storeNumber: null });
+  const [returnData, setReturnData] = useState({
+    customerName: '',
+    customerPhone: '',
+    productName: '',
+    saleDate: '',
+    storeLocation: '',
+    returnReason: ''
   });
+  const [matchingSale, setMatchingSale] = useState(null);
+  const [inventoryItem, setInventoryItem] = useState(null);
 
   useEffect(() => {
     const unsubscribeTheme = initializeThemeListener(setIsDarkMode);
-
-    const fetchStoreData = async () => {
-      try {
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
-
-        if (!currentUser) {
-          toast.error('Please sign in to continue');
-          setLoading(false);
-          return;
-        }
-
-        const userDoc = await getDocs(query(
-          collection(db, 'users'),
-          where('userId', '==', currentUser.uid)
-        ));
-
-        if (!userDoc.empty) {
-          const userData = userDoc.docs[0].data();
-          const userLocation = userData.location;
-
-          const businessesRef = collection(db, 'businesses');
-          const businessesSnapshot = await getDocs(businessesRef);
-          
-          let storeInfo = null;
-          
-          for (const doc of businessesSnapshot.docs) {
-            const locations = doc.data().locations || [];
-            const locationIndex = locations.findIndex(loc => loc === userLocation);
-            
-            if (locationIndex !== -1) {
-              storeInfo = {
-                id: `store-${locationIndex + 1}`,
-                location: userLocation,
-                storeNumber: locationIndex + 1
-              };
-              break;
-            }
-          }
-
-          setStoreData(storeInfo);
-        }
-      } catch (error) {
-        console.error('Error fetching store data:', error);
-        toast.error('Error loading store data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchStoreData();
+    fetchAllStores();
     return unsubscribeTheme;
   }, []);
 
-  const handleSearchInput = (e) => {
-    const value = e.target.value;
-    setSearchInput(value);
-    const params = value.split('+').map(param => param.trim()).filter(param => param.length > 0);
-    setSearchParams(params);
+  const fetchStoreData = async () => {
+    try {
+      const businessesRef = collection(db, 'businesses');
+      const businessesSnapshot = await getDocs(businessesRef);
+      const firstBusiness = businessesSnapshot.docs[0];
+      
+      if (firstBusiness) {
+        const locations = firstBusiness.data().locations || [];
+        if (locations.length > 0) {
+          setStoreData({
+            id: `store-1`,
+            location: locations[0],
+            storeNumber: 1
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching store data:', error);
+      toast.error('Error loading store data');
+    }
   };
 
-  useEffect(() => {
-    const searchSales = async () => {
-      if (searchParams.length === 0) {
-        setFilteredSales([]);
+  const fetchAllStores = async () => {
+    try {
+      const businessesRef = collection(db, 'businesses');
+      const businessesSnapshot = await getDocs(businessesRef);
+      let allStores = [];
+      
+      businessesSnapshot.docs.forEach(doc => {
+        const locations = doc.data().locations || [];
+        locations.forEach((location, index) => {
+          allStores.push({
+            id: `store-${index + 1}`,
+            location: location,
+            storeNumber: index + 1
+          });
+        });
+      });
+      
+      setStores(allStores);
+    } catch (error) {
+      console.error('Error fetching stores:', error);
+      toast.error('Error loading stores');
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setReturnData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const findSale = async () => {
+    const requiredFields = ['customerPhone', 'productName'];
+    const missingFields = requiredFields.filter(field => !returnData[field]);
+    
+    if (missingFields.length > 0) {
+      toast.error(`Please provide ${missingFields.join(' and ')}`);
+      return;
+    }
+
+    try {
+      const salesRef = collection(db, 'sales');
+      let queryConditions = [
+        where('customerPhone', '==', returnData.customerPhone),
+        where('productName', '==', returnData.productName)
+      ];
+
+      if (returnData.storeLocation) {
+        queryConditions.push(where('storeLocation', '==', returnData.storeLocation));
+      }
+      
+      const q = query(salesRef, ...queryConditions);
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        toast.error('No matching sale found');
         return;
       }
 
-      try {
-        const salesRef = collection(db, 'sales');
-        const salesQuery = query(
-          salesRef,
-          where('storeId', '==', storeData.id)
-        );
-        
-        const snapshot = await getDocs(salesQuery);
-        const sales = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate()
-        }));
+      const sale = {
+        id: snapshot.docs[0].id,
+        ...snapshot.docs[0].data()
+      };
 
-        const filtered = sales.filter(sale => {
-          return searchParams.every(param => {
-            const paramLower = param.toLowerCase().trim();
-            return (
-              sale.customerName?.toLowerCase().includes(paramLower) ||
-              sale.customerPhone?.toLowerCase().includes(paramLower) ||
-              sale.productName?.toLowerCase().includes(paramLower) ||
-              sale.brand?.toLowerCase().includes(paramLower)
-            );
-          });
+      setMatchingSale(sale);
+      setReturnData(prev => ({
+        ...prev,
+        customerName: sale.customerName || prev.customerName,
+        storeLocation: sale.storeLocation || prev.storeLocation,
+      }));
+
+      // Find matching inventory item
+      const inventoryRef = collection(db, 'inventory');
+      const inventoryQ = query(
+        inventoryRef,
+        where('productName', '==', returnData.productName),
+        where('storeId', '==', sale.storeId)
+      );
+
+      const inventorySnapshot = await getDocs(inventoryQ);
+      if (!inventorySnapshot.empty) {
+        setInventoryItem({
+          id: inventorySnapshot.docs[0].id,
+          ...inventorySnapshot.docs[0].data()
         });
-
-        setFilteredSales(filtered);
-      } catch (error) {
-        console.error('Error searching sales:', error);
-        toast.error('Error searching sales records');
       }
-    };
-
-    if (storeData.id) {
-      searchSales();
+    } catch (error) {
+      console.error('Error finding sale:', error);
+      toast.error('Error searching for sale');
     }
-  }, [searchParams, storeData.id]);
+  };
 
   const handleReturn = async () => {
-    if (!selectedSale || !returnReason) {
-      toast.error('Please select a sale and provide a return reason');
+    if (!matchingSale || !returnData.returnReason) {
+      toast.error('Please provide all required information');
       return;
     }
 
     setProcessing(true);
-
     try {
-      await runTransaction(db, async (transaction) => {
-        // Add return record
-        const returnRef = collection(db, 'returns');
-        await addDoc(returnRef, {
-          saleId: selectedSale.id,
-          productId: selectedSale.productId,
-          storeId: selectedSale.storeId,
-          storeLocation: selectedSale.storeLocation,
-          storeNumber: selectedSale.storeNumber,
-          customerName: selectedSale.customerName,
-          customerPhone: selectedSale.customerPhone,
-          productName: selectedSale.productName,
-          brand: selectedSale.brand,
-          size: selectedSale.size,
-          quantity: selectedSale.quantity,
-          originalSalePrice: selectedSale.price,
-          returnReason: returnReason,
-          returnDate: Timestamp.now(),
-          processedBy: getAuth().currentUser.uid
-        });
-
-        // Update inventory
-        const inventoryRef = doc(db, 'inventory', selectedSale.productId);
-        const inventoryDoc = await transaction.get(inventoryRef);
-        
-        if (!inventoryDoc.exists()) {
-          throw new Error('Product not found in inventory');
-        }
-
-        const currentStock = inventoryDoc.data().stock || 0;
-        transaction.update(inventoryRef, {
-          stock: currentStock + selectedSale.quantity
-        });
+      // 1. Create return document
+      const returnRef = collection(db, 'returns');
+      const returnDoc = await addDoc(returnRef, {
+        saleId: matchingSale.id,
+        productId: matchingSale.productId,  
+        storeId: matchingSale.storeId,
+        customerName: matchingSale.customerName,
+        customerPhone: matchingSale.customerPhone,
+        productName: matchingSale.productName,
+        returnReason: returnData.returnReason,
+        processedBy: auth.currentUser.uid,
+        returnDate: Timestamp.now(),
+        originalSaleDate: matchingSale.timestamp,
+        price: matchingSale.price,
+        size: matchingSale.size,
+        brand: matchingSale.brand
       });
 
+      // 2. Update inventory if needed
+      if (inventoryItem) {
+        const updatedStock = (inventoryItem.stock || 0) + 1;
+        await updateDoc(doc(db, 'inventory', inventoryItem.id), {
+          stock: updatedStock
+        });
+      }
+
+      // 3. Delete the original sale
+      await deleteDoc(doc(db, 'sales', matchingSale.id));
+
       toast.success('Return processed successfully');
-      setSelectedSale(null);
-      setReturnReason('');
-      setSearchInput('');
-      setSearchParams([]);
-      setFilteredSales([]);
+      // Reset form
+      setReturnData({
+        customerName: '',
+        customerPhone: '',
+        productName: '',
+        saleDate: '',
+        storeLocation: '',
+        returnReason: ''
+      });
+      setMatchingSale(null);
+      setInventoryItem(null);
     } catch (error) {
       console.error('Error processing return:', error);
       toast.error('Error processing return');
@@ -224,116 +235,137 @@ const StaffReturn = () => {
           isDarkMode ? 'bg-gray-800' : 'bg-white'
         } p-6`}>
           <div className="space-y-6">
-            <div className="relative">
-              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                Search Sale
-              </label>
-              <div className="relative">
-                <Search 
-                  className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`} 
-                  size={20} 
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Customer Name
+                </label>
                 <input
                   type="text"
-                  value={searchInput}
-                  onChange={handleSearchInput}
-                  placeholder="Search by customer name + phone + product (e.g., John + 0712345678)"
-                  className={`${inputClasses} pl-10`}
+                  name="customerName"
+                  value={returnData.customerName}
+                  onChange={handleInputChange}
+                  className={inputClasses}
+                  placeholder="Enter customer name"
                 />
               </div>
-              <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Use + to combine search parameters
-              </p>
+              <div>
+                <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Customer Phone *
+                </label>
+                <input
+                  type="text"
+                  name="customerPhone"
+                  value={returnData.customerPhone}
+                  onChange={handleInputChange}
+                  className={inputClasses}
+                  placeholder="Enter customer phone"
+                />
+              </div>
+              <div>
+                <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Product Name *
+                </label>
+                <input
+                  type="text"
+                  name="productName"
+                  value={returnData.productName}
+                  onChange={handleInputChange}
+                  className={inputClasses}
+                  placeholder="Enter product name"
+                />
+              </div>
+              <div>
+                <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Sale Date
+                </label>
+                <input
+                  type="date"
+                  name="saleDate"
+                  value={returnData.saleDate}
+                  onChange={handleInputChange}
+                  className={inputClasses}
+                />
+              </div>
+              <div>
+                <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Store Location
+                </label>
+                <select
+                  name="storeLocation"
+                  value={returnData.storeLocation}
+                  onChange={handleInputChange}
+                  className={inputClasses}
+                >
+                  <option value="">Select Store</option>
+                  {stores.map(store => (
+                    <option key={store.id} value={store.location}>
+                      {store.location}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {filteredSales.length > 0 && (
-              <div className="mt-4 space-y-4">
-                {filteredSales.map((sale) => (
-                  <motion.div
-                    key={sale.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className={`p-4 rounded-lg cursor-pointer border-2 ${
-                      selectedSale?.id === sale.id
-                        ? isDarkMode 
-                          ? 'border-blue-500 bg-gray-700' 
-                          : 'border-blue-500 bg-blue-50'
-                        : isDarkMode
-                          ? 'border-gray-700 hover:border-gray-600'
-                          : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => setSelectedSale(sale)}
-                  >
-                    <div className="flex justify-between">
-                      <div>
-                        <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          {sale.productName} - {sale.brand}
-                        </p>
-                        <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                          Size: {sale.size} | Quantity: {sale.quantity}
-                        </p>
-                        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          Customer: {sale.customerName || 'N/A'} | Phone: {sale.customerPhone || 'N/A'}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          KES {sale.total.toFixed(2)}
-                        </p>
-                        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {sale.timestamp.toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
+            <div className="flex justify-center">
+              <button
+                onClick={findSale}
+                disabled={!returnData.customerPhone || !returnData.productName || processing}
+                className={`flex items-center px-6 py-2 rounded-lg ${
+                  processing 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-500 hover:bg-blue-600'
+                } text-white`}
+              >
+                <Search size={20} className="mr-2" />
+                Find Sale
+              </button>
+            </div>
 
-            {selectedSale && (
-              <div className="mt-6 space-y-4">
-                <div>
+            {matchingSale && (
+              <div className={`mt-6 p-4 rounded-lg ${
+                isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
+              }`}>
+                <h3 className={`text-lg font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  Sale Details
+                </h3>
+                <div className={`grid grid-cols-2 gap-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  <p><span className="opacity-75">Customer:</span> {matchingSale.customerName}</p>
+                  <p><span className="opacity-75">Phone:</span> {matchingSale.customerPhone}</p>
+                  <p><span className="opacity-75">Product:</span> {matchingSale.productName}</p>
+                  <p><span className="opacity-75">Size:</span> {matchingSale.size}</p>
+                  <p><span className="opacity-75">Price:</span> KES {matchingSale.price}</p>
+                  <p><span className="opacity-75">Store:</span> {matchingSale.storeLocation}</p>
+                  <p><span className="opacity-75">Date:</span> {matchingSale.timestamp?.toDate().toLocaleDateString()}</p>
+                  <p><span className="opacity-75">Brand:</span> {matchingSale.brand}</p>
+                </div>
+
+                <div className="mt-4">
                   <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                    Return Reason
+                    Return Reason *
                   </label>
                   <textarea
-                    value={returnReason}
-                    onChange={(e) => setReturnReason(e.target.value)}
+                    name="returnReason"
+                    value={returnData.returnReason}
+                    onChange={handleInputChange}
                     className={`${inputClasses} min-h-[100px]`}
-                    placeholder="Enter the reason for return..."
-                    required
+                    placeholder="Enter reason for return..."
                   />
                 </div>
 
-                <div className="flex justify-end space-x-4">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => {
-                      setSelectedSale(null);
-                      setReturnReason('');
-                    }}
-                    className={`px-4 py-2 rounded-lg ${
-                      isDarkMode
-                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                        : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                    }`}
-                    disabled={processing}
-                  >
-                    Cancel
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                <div className="mt-4 flex justify-end">
+                  <button
                     onClick={handleReturn}
-                    className="flex items-center px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white"
-                    disabled={processing}
+                    disabled={processing || !returnData.returnReason}
+                    className={`flex items-center px-6 py-2 rounded-lg ${
+                      processing || !returnData.returnReason
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-blue-500 hover:bg-blue-600'
+                    } text-white`}
                   >
                     <RotateCcw size={20} className="mr-2" />
                     {processing ? 'Processing...' : 'Process Return'}
-                  </motion.button>
+                  </button>
                 </div>
               </div>
             )}

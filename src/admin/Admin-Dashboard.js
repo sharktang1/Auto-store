@@ -5,36 +5,29 @@ import {
   DollarSign, 
   Users, 
   TrendingUp, 
-  ShoppingCart, 
-  UserCheck, 
-  ArrowRight 
+  ShoppingBag,
+  CheckCircle
 } from 'lucide-react';
-import { useNavigate , Link} from 'react-router-dom';
-import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { useNavigate } from 'react-router-dom';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  getDoc,
+  getDocs,
+  setDoc,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { db } from '../libs/firebase-config';
+import { toast } from 'react-toastify';
 import Navbar from '../components/Navbar';
 import { getInitialTheme, initializeThemeListener } from '../utils/theme';
 
-// Sample data for charts
-const sampleSalesData = [
-  { name: 'Jan', value: 400 },
-  { name: 'Feb', value: 300 },
-  { name: 'Mar', value: 600 },
-  { name: 'Apr', value: 800 },
-  { name: 'May', value: 500 },
-  { name: 'Jun', value: 700 },
-];
-
-const sampleInventoryData = [
-  { name: 'Electronics', value: 35 },
-  { name: 'Clothing', value: 25 },
-  { name: 'Food', value: 20 },
-  { name: 'Books', value: 20 },
-];
-
-const COLORS = ['#f97316', '#3b82f6', '#a855f7', '#10b981'];
-
 const DashboardCard = ({ title, value, icon: Icon, color, to }) => {
-  const navigate = useNavigate();  // Moved inside the function body
+  const navigate = useNavigate();
   
   return (
     <motion.div
@@ -56,120 +49,175 @@ const DashboardCard = ({ title, value, icon: Icon, color, to }) => {
   );
 };
 
-// ActivityItem Component
-const ActivityItem = ({ icon: Icon, title, description, time, to, isDarkMode }) => (
-  <Link to={to}>
+const LentItem = ({ item, isDarkMode, onUpdateInventory, isUpdating }) => {
+  const formattedDate = new Date(item.lentDate).toLocaleString();
+  
+  return (
     <motion.div 
-      className="flex items-start space-x-3 p-3 rounded-lg cursor-pointer"
-      whileHover={{ 
-        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-        scale: 1.01 
-      }}
-      whileTap={{ scale: 0.99 }}
+      className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'} mb-4`}
+      whileHover={{ scale: 1.01 }}
     >
-      <div className="bg-orange-100 rounded-full p-2">
-        <Icon className="text-orange-500" size={20} />
-      </div>
-      <div className="flex-grow">
-        <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{title}</p>
-        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{description}</p>
-        <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{time}</p>
-      </div>
-      <div className="flex items-center">
-        <ArrowRight className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={16} />
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {item.itemDetails.name} - {item.itemDetails.brand}
+          </h3>
+          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            AT No: {item.itemDetails.atNo}
+          </p>
+          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            From: {item.fromStoreId} → To: {item.toStoreId}
+          </p>
+          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Type: {item.type}, Quantity: {item.quantity}
+          </p>
+          <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            Lent on: {formattedDate}
+          </p>
+        </div>
+        
+        <div className="flex flex-col items-end space-y-2">
+          <span className={`px-2 py-1 rounded-full text-xs ${
+            item.status === 'lent' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'
+          }`}>
+            {item.status}
+          </span>
+          {item.status === 'lent' && (
+            <button
+              onClick={() => onUpdateInventory(item)}
+              disabled={isUpdating}
+              className={`flex items-center space-x-1 px-3 py-1 ${
+                isUpdating 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-500 hover:bg-blue-600'
+              } text-white rounded-md text-sm transition-colors`}
+            >
+              <CheckCircle size={16} />
+              <span>{isUpdating ? 'Updating...' : 'Update Inventory'}</span>
+            </button>
+          )}
+        </div>
       </div>
     </motion.div>
-  </Link>
-);
+  );
+};
 
-// StatsPreviewCard Component
-const StatsPreviewCard = ({ isDarkMode }) => (
-  <motion.div
-    whileHover={{ scale: 1.02 }}
-    whileTap={{ scale: 0.98 }}
-    className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} cursor-pointer`}
-    onClick={() => window.location.href = '/stats'}
-  >
-    <div className="grid grid-cols-2 gap-4">
-      {/* Sales Trend Chart */}
-      <div className="h-64">
-        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Sales Trend
-        </h3>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={sampleSalesData} barSize={8}>
-            <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="h-64">
-        <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Inventory Mix
-        </h3>
-        {/* Pie Chart */}
-        <div className="h-1/2">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={sampleInventoryData}
-                innerRadius={25}
-                outerRadius={40}
-                paddingAngle={2}
-                dataKey="value"
-              >
-                {sampleInventoryData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Key Metrics */}
-        <div className={`mt-4 p-4 rounded-lg bg-opacity-10 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Growth Rate</span>
-              <span className={`text-xs font-medium ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>+15.8%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Conversion</span>
-              <span className={`text-xs font-medium ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>4.2%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Order</span>
-              <span className={`text-xs font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>$85.30</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div className="mt-4 flex justify-between items-center">
-      <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-        Click to view detailed statistics
-      </span>
-      <ArrowRight className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} size={16} />
-    </div>
-  </motion.div>
-);
-
-// Main Dashboard Component
 const Dashboard = () => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
-
+  const [lentItems, setLentItems] = useState([]);
+  const [isUpdating, setIsUpdating] = useState(false);
+  
   useEffect(() => {
-    // Initialize theme listener and get cleanup function
     const cleanup = initializeThemeListener(setIsDarkMode);
-    
-    // Clean up event listeners when component unmounts
-    return () => {
-      if (cleanup) cleanup();
-    };
+    return cleanup;
   }, []);
 
-  // Mock user data
+  useEffect(() => {
+    const q = query(collection(db, 'lentshoes'), where('status', '==', 'lent'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setLentItems(items);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleUpdateInventory = async (item) => {
+    setIsUpdating(true);
+    try {
+      // Get the business document to verify the store location
+      const businessesQuery = query(collection(db, 'businesses'));
+      const businessesSnap = await getDocs(businessesQuery);
+      
+      // Find the business that has the target store location
+      let targetBusinessId = null;
+      let locationIndex = -1;
+      
+      businessesSnap.forEach(doc => {
+        const businessData = doc.data();
+        if (businessData.locations) {
+          // Find the index of the location in the locations array
+          const index = businessData.locations.indexOf(item.toStoreId);
+          if (index !== -1) {
+            targetBusinessId = doc.id;
+            // Add 1 to make store IDs 1-based instead of 0-based
+            locationIndex = index + 1;
+          }
+        }
+      });
+  
+      if (!targetBusinessId || locationIndex === -1) {
+        throw new Error('Invalid store location');
+      }
+  
+      // Construct the correct store ID using the location index
+      const targetStoreId = `store-${locationIndex}`;
+  
+      // Get the source inventory item
+      const sourceInventoryRef = doc(db, 'inventory', item.itemId);
+      const sourceInventorySnap = await getDoc(sourceInventoryRef);
+      
+      if (!sourceInventorySnap.exists()) {
+        throw new Error('Source inventory item not found');
+      }
+  
+      const sourceInventoryData = sourceInventorySnap.data();
+  
+      // Check if item exists in destination store
+      const destinationQuery = query(
+        collection(db, 'inventory'),
+        where('storeId', '==', targetStoreId),
+        where('atNo', '==', item.itemDetails.atNo)
+      );
+      const destinationSnap = await getDocs(destinationQuery);
+  
+      let destinationInventoryRef;
+      
+      if (destinationSnap.empty) {
+        // Create new inventory item with correct store ID
+        destinationInventoryRef = doc(collection(db, 'inventory'));
+        await setDoc(destinationInventoryRef, {
+          ...sourceInventoryData,
+          storeId: targetStoreId,
+          stock: item.quantity,
+          incompletePairs: item.type === 'single' ? 1 : 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Update existing inventory item
+        destinationInventoryRef = doc(db, 'inventory', destinationSnap.docs[0].id);
+        const destinationData = destinationSnap.docs[0].data();
+        
+        await updateDoc(destinationInventoryRef, {
+          stock: destinationData.stock + item.quantity,
+          incompletePairs: item.type === 'single' 
+            ? destinationData.incompletePairs + 1 
+            : destinationData.incompletePairs,
+          updatedAt: serverTimestamp()
+        });
+      }
+  
+      // Update lentshoes status
+      const lentShoeRef = doc(db, 'lentshoes', item.id);
+      await updateDoc(lentShoeRef, {
+        status: 'updated',
+        updateDate: serverTimestamp()
+      });
+  
+      toast.success('Inventory updated successfully');
+    } catch (error) {
+      console.error('Error updating inventory:', error);
+      toast.error('Failed to update inventory: ' + error.message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+  
   const userData = {
     username: "John Doe",
     email: "john@example.com",
@@ -191,15 +239,14 @@ const Dashboard = () => {
           Dashboard Overview
         </h1>
 
-        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <DashboardCard
-          title="Total Inventory"
-          value="0000"
-          icon={Package}
-          color="bg-blue-500"
-          to="/admin/inventory"  // Updated path to match the route
-        />
+          <DashboardCard
+            title="Total Inventory"
+            value="0000"
+            icon={Package}
+            color="bg-blue-500"
+            to="/admin/inventory"
+          />
           <DashboardCard
             title="Total Sales"
             value="ksh"
@@ -223,48 +270,36 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Stats Preview Card */}
-          <StatsPreviewCard isDarkMode={isDarkMode} />
-
-          {/* Recent Activity Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}
-          >
-            <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              Recent Activity
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} w-full`}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              Pending Inventory Updates
             </h2>
-            <div className="space-y-4">
-              <ActivityItem
-                icon={ShoppingCart}
-                title="New Order"
-                description="Order #12345 received"
-                time="5 mins ago"
-                to="/orders/12345"
-                isDarkMode={isDarkMode}
-              />
-              <ActivityItem
-                icon={Package}
-                title="Stock Update"
-                description="Inventory updated for 'Product X'"
-                time="2 hours ago"
-                to="/inventory/product-x"
-                isDarkMode={isDarkMode}
-              />
-              <ActivityItem
-                icon={UserCheck}
-                title="Staff Login"
-                description="Jane Doe logged in"
-                time="3 hours ago"
-                to="/staff/jane-doe"
-                isDarkMode={isDarkMode}
-              />
-            </div>
-          </motion.div>
-        </div>
+            <ShoppingBag className={isDarkMode ? 'text-white' : 'text-gray-600'} size={24} />
+          </div>
+          
+          <div className="space-y-4">
+            {lentItems.length === 0 ? (
+              <p className={`text-center py-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                No pending inventory updates
+              </p>
+            ) : (
+              lentItems.map(item => (
+                <LentItem
+                  key={item.id}
+                  item={item}
+                  isDarkMode={isDarkMode}
+                  onUpdateInventory={handleUpdateInventory}
+                  isUpdating={isUpdating}
+                />
+              ))
+            )}
+          </div>
+        </motion.div>
       </div>
     </div>
   );
