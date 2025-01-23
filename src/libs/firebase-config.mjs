@@ -7,13 +7,13 @@ import { getMessaging } from "firebase/messaging";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBmyV6hca0aBariuywNiVMVeoaSZ8U6p68",
-  authDomain: "auto-store-b3730.firebaseapp.com",
-  projectId: "auto-store-b3730",
-  storageBucket: "auto-store-b3730.firebasestorage.app",
-  messagingSenderId: "929143550068",
-  appId: "1:929143550068:web:472b9970843d27c901e121",
-  measurementId: "G-KVTEPFL64G"
+  apiKey: "AIzaSyDf3zs3cJUkQFfoZdmXjxUTzuLnEixv_xY",
+  authDomain: "ranivour.firebaseapp.com",
+  projectId: "ranivour",
+  storageBucket: "ranivour.firebasestorage.app",
+  messagingSenderId: "950645609036",
+  appId: "1:950645609036:web:4dad4bfc12141ecfc51ae9",
+  measurementId: "G-QC5DJFBDLH"
       
   };
 // Initialize Firebase

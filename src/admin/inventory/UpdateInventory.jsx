@@ -198,6 +198,7 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
               <option value="Casual">Casual</option>
               <option value="Sport">Sport</option>
               <option value="Fashion">Fashion</option>
+              <option value="Official">Official</option>
             </select>
           </div>
 
