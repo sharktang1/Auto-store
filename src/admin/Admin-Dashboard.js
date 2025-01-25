@@ -259,22 +259,9 @@ const Dashboard = () => {
         return hasSameSize && hasSameColor;
       });
   
-      let destinationInventoryRef;
-      
-      if (matchingInventoryItems.length === 0) {
-        // Create new inventory item
-        destinationInventoryRef = doc(collection(db, 'inventory'));
-        await setDoc(destinationInventoryRef, {
-          ...item.itemDetails,
-          storeId: targetStoreId,
-          stock: item.quantity,
-          incompletePairs: item.type === 'single' ? 1 : 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      } else {
+      if (matchingInventoryItems.length > 0) {
         // Update existing inventory item
-        destinationInventoryRef = doc(db, 'inventory', matchingInventoryItems[0].id);
+        const destinationInventoryRef = doc(db, 'inventory', matchingInventoryItems[0].id);
         const destinationData = matchingInventoryItems[0].data();
         
         await updateDoc(destinationInventoryRef, {
@@ -282,6 +269,17 @@ const Dashboard = () => {
           incompletePairs: item.type === 'single' 
             ? (destinationData.incompletePairs || 0) + 1 
             : (destinationData.incompletePairs || 0),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Create new inventory item
+        const destinationInventoryRef = doc(collection(db, 'inventory'));
+        await setDoc(destinationInventoryRef, {
+          ...item.itemDetails,
+          storeId: targetStoreId,
+          stock: item.quantity,
+          incompletePairs: item.type === 'single' ? 1 : 0,
+          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
       }
@@ -300,7 +298,7 @@ const Dashboard = () => {
     } finally {
       setIsUpdating(false);
     }
-  };
+  }; 
   
   const handleCompleteReturn = async (item) => {
     setIsUpdating(true);
