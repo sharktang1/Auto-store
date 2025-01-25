@@ -240,45 +240,48 @@ const Dashboard = () => {
          item.toStoreId.includes('ShopB') ? 'store-2' : 
          'store-1');
   
-      // Expanded query to check for existing inventory with more specific criteria
       const destinationQuery = query(
         collection(db, 'inventory'),
         where('storeId', '==', targetStoreId),
         where('atNo', '==', item.itemDetails.atNo),
         where('brand', '==', item.itemDetails.brand),
-        where('name', '==', item.itemDetails.name)
+        where('name', '==', item.itemDetails.name),
+        where('category', '==', item.itemDetails.category)
       );
+  
       const destinationSnap = await getDocs(destinationQuery);
+  
+      // Additional client-side filtering for sizes and colors
+      const matchingInventoryItems = destinationSnap.docs.filter(doc => {
+        const inventoryData = doc.data();
+        const hasSameSize = inventoryData.sizes.includes(item.itemDetails.sizes[0]);
+        const hasSameColor = inventoryData.colors.includes(item.itemDetails.colors[0]);
+        return hasSameSize && hasSameColor;
+      });
   
       let destinationInventoryRef;
       
-      if (destinationSnap.empty) {
-        // Create new inventory item with all details from lentshoes
+      if (matchingInventoryItems.length === 0) {
+        // Create new inventory item
         destinationInventoryRef = doc(collection(db, 'inventory'));
         await setDoc(destinationInventoryRef, {
           ...item.itemDetails,
           storeId: targetStoreId,
           stock: item.quantity,
           incompletePairs: item.type === 'single' ? 1 : 0,
-          colors: item.itemDetails.colors || [],
-          sizes: item.itemDetails.sizes || [],
-          ageGroup: item.itemDetails.ageGroup || '',
-          gender: item.itemDetails.gender || '',
-          category: item.itemDetails.category || '',
-          price: item.itemDetails.price || 0,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
       } else {
         // Update existing inventory item
-        destinationInventoryRef = doc(db, 'inventory', destinationSnap.docs[0].id);
-        const destinationData = destinationSnap.docs[0].data();
+        destinationInventoryRef = doc(db, 'inventory', matchingInventoryItems[0].id);
+        const destinationData = matchingInventoryItems[0].data();
         
         await updateDoc(destinationInventoryRef, {
           stock: destinationData.stock + item.quantity,
           incompletePairs: item.type === 'single' 
-            ? destinationData.incompletePairs + 1 
-            : destinationData.incompletePairs,
+            ? (destinationData.incompletePairs || 0) + 1 
+            : (destinationData.incompletePairs || 0),
           updatedAt: serverTimestamp()
         });
       }
@@ -298,7 +301,7 @@ const Dashboard = () => {
       setIsUpdating(false);
     }
   };
-
+  
   const handleCompleteReturn = async (item) => {
     setIsUpdating(true);
     try {
