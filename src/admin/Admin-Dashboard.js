@@ -230,58 +230,47 @@ const Dashboard = () => {
   const handleUpdateInventory = async (item) => {
     setIsUpdating(true);
     try {
-      const businessesQuery = query(collection(db, 'businesses'));
-      const businessesSnap = await getDocs(businessesQuery);
+      const storeLocationMap = {
+        'Thika-ShopA': 'store-1',
+        'Thika-ShopB': 'store-2'
+      };
       
-      let targetBusinessId = null;
-      let locationIndex = -1;
-      
-      businessesSnap.forEach(doc => {
-        const businessData = doc.data();
-        if (businessData.locations) {
-          const index = businessData.locations.indexOf(item.toStoreId);
-          if (index !== -1) {
-            targetBusinessId = doc.id;
-            locationIndex = index + 1;
-          }
-        }
-      });
+      const targetStoreId = storeLocationMap[item.toStoreId] || 
+        (item.toStoreId.includes('ShopA') ? 'store-1' : 
+         item.toStoreId.includes('ShopB') ? 'store-2' : 
+         'store-1');
   
-      if (!targetBusinessId || locationIndex === -1) {
-        throw new Error('Invalid store location');
-      }
-  
-      const targetStoreId = `store-${locationIndex}`;
-  
-      const sourceInventoryRef = doc(db, 'inventory', item.itemId);
-      const sourceInventorySnap = await getDoc(sourceInventoryRef);
-      
-      if (!sourceInventorySnap.exists()) {
-        throw new Error('Source inventory item not found');
-      }
-  
-      const sourceInventoryData = sourceInventorySnap.data();
-  
+      // Expanded query to check for existing inventory with more specific criteria
       const destinationQuery = query(
         collection(db, 'inventory'),
         where('storeId', '==', targetStoreId),
-        where('atNo', '==', item.itemDetails.atNo)
+        where('atNo', '==', item.itemDetails.atNo),
+        where('brand', '==', item.itemDetails.brand),
+        where('name', '==', item.itemDetails.name)
       );
       const destinationSnap = await getDocs(destinationQuery);
   
       let destinationInventoryRef;
       
       if (destinationSnap.empty) {
+        // Create new inventory item with all details from lentshoes
         destinationInventoryRef = doc(collection(db, 'inventory'));
         await setDoc(destinationInventoryRef, {
-          ...sourceInventoryData,
+          ...item.itemDetails,
           storeId: targetStoreId,
           stock: item.quantity,
           incompletePairs: item.type === 'single' ? 1 : 0,
+          colors: item.itemDetails.colors || [],
+          sizes: item.itemDetails.sizes || [],
+          ageGroup: item.itemDetails.ageGroup || '',
+          gender: item.itemDetails.gender || '',
+          category: item.itemDetails.category || '',
+          price: item.itemDetails.price || 0,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
       } else {
+        // Update existing inventory item
         destinationInventoryRef = doc(db, 'inventory', destinationSnap.docs[0].id);
         const destinationData = destinationSnap.docs[0].data();
         
@@ -294,6 +283,7 @@ const Dashboard = () => {
         });
       }
   
+      // Update lentshoes status
       const lentShoeRef = doc(db, 'lentshoes', item.id);
       await updateDoc(lentShoeRef, {
         status: 'updated',

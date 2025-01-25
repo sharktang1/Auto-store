@@ -180,7 +180,20 @@ const StaffLender = () => {
     try {
       const auth = getAuth();
       const lentItem = {
-        itemId: selectedItem.id,
+        // Capture all relevant inventory attributes
+        itemDetails: {
+          id: selectedItem.id,
+          atNo: selectedItem.atNo,
+          name: selectedItem.name,
+          brand: selectedItem.brand,
+          category: selectedItem.category,
+          gender: selectedItem.gender,
+          ageGroup: selectedItem.ageGroup,
+          colors: selectedItem.colors,
+          sizes: selectedItem.sizes,
+          price: selectedItem.price,
+          storeId: selectedItem.storeId
+        },
         fromStoreId: `store-${userLocation}`,
         toStoreId: selectedStore,
         fromStaffId: auth.currentUser.uid,
@@ -189,11 +202,7 @@ const StaffLender = () => {
         type: lendType,
         status: 'lent',
         lentDate: new Date().toISOString(),
-        itemDetails: {
-          name: selectedItem.name,
-          atNo: selectedItem.atNo,
-          brand: selectedItem.brand
-        }
+        notes: selectedItem.notes || ''
       };
   
       // Create lending record
