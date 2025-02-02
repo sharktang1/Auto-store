@@ -35,7 +35,8 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
       (snapshot) => {
         try {
           const salesData = snapshot.docs.map(doc => ({
-            id: doc.id,
+            id: doc.id,  // Document ID
+            documentId: doc.id,  // Additional field for document ID
             ...doc.data(),
             timestamp: doc.data().timestamp?.toDate()
           }));
@@ -118,8 +119,9 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         return;
       }
 
-      const headers = ['Date', 'Brand', 'Product', 'Size', 'Quantity', 'Price', 'Total', 'Customer', 'Phone', 'Payment Method'];
+      const headers = ['Document ID', 'Date', 'Brand', 'Product', 'Size', 'Quantity', 'Price', 'Total', 'Customer', 'Phone', 'Payment Method'];
       const csvData = filteredSales.map(sale => [
+        sale.documentId || 'N/A',
         sale.timestamp?.toLocaleDateString() || 'N/A',
         sale.brand || 'N/A',
         sale.productName || 'N/A',
@@ -238,6 +240,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         <table className="w-full">
           <thead>
             <tr className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>
+              <th className="p-3 text-left">Document ID</th>
               <th className="p-3 text-left">Date</th>
               <th className="p-3 text-left">Brand</th>
               <th className="p-3 text-left">Product</th>
@@ -253,7 +256,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-4">
+                <td colSpan={11} className="text-center py-4">
                   <p className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
                     No sales records found
                   </p>
@@ -269,6 +272,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
                     isDarkMode ? 'border-gray-700 text-gray-200' : 'border-gray-200 text-gray-700'
                   }`}
                 >
+                  <td className="p-3">{sale.documentId}</td>
                   <td className="p-3">
                     {sale.timestamp?.toLocaleDateString()}
                   </td>

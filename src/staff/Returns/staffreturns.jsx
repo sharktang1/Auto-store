@@ -6,10 +6,8 @@ import { getInitialTheme, initializeThemeListener } from '../../utils/theme';
 import { 
   getFirestore, 
   collection, 
-  query, 
-  where, 
-  getDocs,
-  Timestamp,
+  doc,
+  getDoc,
   addDoc 
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -17,11 +15,7 @@ import { toast } from 'react-toastify';
 
 const StaffReturns = () => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
-  const [formData, setFormData] = useState({
-    productName: '',
-    size: '',
-    saleDate: ''
-  });
+  const [saleId, setSaleId] = useState('');
   const [saleDetails, setSaleDetails] = useState(null);
   const [returnReason, setReturnReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,45 +33,25 @@ const StaffReturns = () => {
     return cleanup;
   }, []);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
   const findSale = async () => {
     setLoading(true);
     setSaleDetails(null);
   
-    if (!formData.productName || !formData.size || !formData.saleDate) {
-      toast.error('Please fill in product name, size, and sale date');
+    if (!saleId.trim()) {
+      toast.error('Please enter a sale ID');
       setLoading(false);
       return;
     }
   
     try {
       const db = getFirestore();
-      const salesRef = collection(db, 'sales');
+      const saleRef = doc(db, 'sales', saleId.trim());
+      const saleSnap = await getDoc(saleRef);
   
-      const salesQuery = query(
-        salesRef, 
-        where('productName', '==', formData.productName),
-        where('size', '==', formData.size)
-      );
-  
-      const salesSnapshot = await getDocs(salesQuery);
-  
-      const matchingSales = salesSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(sale => {
-          const saleDate = new Date(sale.timestamp.seconds * 1000);
-          const selectedDate = new Date(formData.saleDate);
-          return saleDate.toDateString() === selectedDate.toDateString();
-        });
-  
-      if (matchingSales.length > 0) {
-        setSaleDetails(matchingSales[0]);
+      if (saleSnap.exists()) {
+        setSaleDetails({ id: saleSnap.id, ...saleSnap.data() });
       } else {
-        toast.error('No matching sale found');
+        toast.error('No sale found with this ID');
       }
     } catch (error) {
       console.error('Error finding sale:', error);
@@ -141,7 +115,7 @@ const StaffReturns = () => {
       toast.success('Return processed successfully');
       
       // Reset form
-      setFormData({ productName: '', size: '', saleDate: '' });
+      setSaleId('');
       setSaleDetails(null);
       setReturnReason('');
       setSelectedReturnOption('');
@@ -161,57 +135,21 @@ const StaffReturns = () => {
         </h1>
 
         <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
-          <div className="grid md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Product Name
-              </label>
-              <input
-                type="text"
-                name="productName"
-                value={formData.productName}
-                onChange={handleInputChange}
-                className={`w-full p-3 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300 text-gray-900'
-                }`}
-                placeholder="Enter Product Name"
-              />
-            </div>
-            <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Size
-              </label>
-              <input
-                type="text"
-                name="size"
-                value={formData.size}
-                onChange={handleInputChange}
-                className={`w-full p-3 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300 text-gray-900'
-                }`}
-                placeholder="Enter Size"
-              />
-            </div>
-            <div>
-              <label className={`block mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Sale Date
-              </label>
-              <input
-                type="date"
-                name="saleDate"
-                value={formData.saleDate}
-                onChange={handleInputChange}
-                className={`w-full p-3 rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300 text-gray-900'
-                }`}
-              />
-            </div>
+          <div className="mb-4">
+            <label className={`block mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Sale ID
+            </label>
+            <input
+              type="text"
+              value={saleId}
+              onChange={(e) => setSaleId(e.target.value)}
+              className={`w-full p-3 rounded-lg border ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              }`}
+              placeholder="Enter Sale ID"
+            />
           </div>
 
           <motion.button

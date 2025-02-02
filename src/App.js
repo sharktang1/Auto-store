@@ -1,33 +1,80 @@
-// App.js
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './libs/firebase-config';
 
+// Component imports
 import Auth from './auth/Auth';
 import AdminDashboard from './admin/Admin-Dashboard';
 import StaffDashboard from './staff/Staff-Dashboard';
 import SetupPopup from './components/SetupPopup';
 import StaffSetupPopup from './components/StaffSetupPopup';
+import LentItemsTracker from './components/LentItemsTracker';
+import Navbar from './components/Navbar';
 
-// Admin imports
+// Admin route imports
 import AdminInventory from './admin/inventory/AdminInventory';
 import AdminSales from './admin/sales/AdminSales';
 import AdminStats from './admin/stats/AdminStats';
 import AdminStaff from './admin/staff/AdminStaff';
 
-// Staff imports
+// Staff route imports
 import StaffInventory from './staff/inventory/StaffInventory';
 import StaffSales from './staff/sales/StaffSales';
 import StaffStats from './staff/stats/StaffStats';
 import Stafflender from './staff/KOPA/stafflender';
 import Staffreturns from './staff/Returns/staffreturns';
 
-
+// Utils
 import { getInitialTheme } from './utils/theme';
+
+// AdminLayout Component
+const AdminLayout = ({ children }) => {
+  const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
+  const [userData, setUserData] = useState({
+    username: '',
+    email: '',
+    isAdmin: true
+  });
+  const location = useLocation();
+
+  // Check if current route is a sales page
+  const isSalesPage = location.pathname.includes('/sales');
+
+  useEffect(() => {
+    const darkModeListener = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e) => setIsDarkMode(e.matches);
+    darkModeListener.addEventListener('change', handleChange);
+
+    // Fetch user data
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (user) {
+      setUserData({
+        username: user.displayName || 'Admin User',
+        email: user.email,
+        isAdmin: true
+      });
+    }
+
+    return () => darkModeListener.removeEventListener('change', handleChange);
+  }, []);
+
+  return (
+    <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
+      <Navbar
+        username={userData.username}
+        email={userData.email}
+        isAdmin={userData.isAdmin}
+      />
+      {children}
+      {!isSalesPage && <LentItemsTracker isDarkMode={isDarkMode} />}
+    </div>
+  );
+};
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -47,6 +94,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+// Main App Component
 function App() {
   const [showAdminSetup, setShowAdminSetup] = useState(false);
   const [showStaffSetup, setShowStaffSetup] = useState(false);
@@ -78,7 +126,7 @@ function App() {
               setShowStaffSetup(true);
             }
           } else {
-            // New user - initialize as admin and show setup
+            // New user - initialize as admin
             await setDoc(doc(db, 'users', user.uid), {
               role: 'admin',
               email: user.email,
@@ -137,7 +185,9 @@ function App() {
   };
 
   if (isLoading) {
-    return <div>Loading...</div>;
+    return <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+    </div>;
   }
 
   return (
@@ -146,8 +196,17 @@ function App() {
         <ToastContainer
           position="top-right"
           autoClose={5000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
           theme={isDarkMode ? 'dark' : 'light'}
+          limit={3}
         />
+        
         <Routes>
           {/* Auth Routes */}
           <Route path="/auth" element={<Auth />} />
@@ -155,42 +214,62 @@ function App() {
 
           {/* Admin Routes */}
           <Route
-            path="/admin/dashboard"
+            path="/admin/*"
             element={
               <ProtectedRoute>
-                <AdminDashboard />
-                <SetupPopup
-                  isOpen={showAdminSetup}
-                  onClose={() => setShowAdminSetup(false)}
-                  onSubmit={handleAdminSetupSubmit}
-                />
+                <AdminLayout>
+                  <Routes>
+                    <Route 
+                      path="dashboard" 
+                      element={
+                        <>
+                          <AdminDashboard />
+                          <SetupPopup
+                            isOpen={showAdminSetup}
+                            onClose={() => setShowAdminSetup(false)}
+                            onSubmit={handleAdminSetupSubmit}
+                          />
+                        </>
+                      }
+                    />
+                    <Route path="inventory" element={<AdminInventory />} />
+                    <Route path="sales" element={<AdminSales />} />
+                    <Route path="stats" element={<AdminStats />} />
+                    <Route path="staff" element={<AdminStaff />} />
+                  </Routes>
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
-          <Route path="/admin/inventory" element={<ProtectedRoute><AdminInventory /></ProtectedRoute>} />
-          <Route path="/admin/sales" element={<ProtectedRoute><AdminSales /></ProtectedRoute>} />
-          <Route path="/admin/stats" element={<ProtectedRoute><AdminStats /></ProtectedRoute>} />
-          <Route path="/admin/staff" element={<ProtectedRoute><AdminStaff /></ProtectedRoute>} />
 
           {/* Staff Routes */}
           <Route
-            path="/staff/dashboard"
+            path="/staff/*"
             element={
               <ProtectedRoute>
-                <StaffDashboard />
-                <StaffSetupPopup
-                  isOpen={showStaffSetup}
-                  onClose={() => setShowStaffSetup(false)}
-                  onSubmit={handleStaffSetupSubmit}
-                />
+                <Routes>
+                  <Route
+                    path="dashboard"
+                    element={
+                      <>
+                        <StaffDashboard />
+                        <StaffSetupPopup
+                          isOpen={showStaffSetup}
+                          onClose={() => setShowStaffSetup(false)}
+                          onSubmit={handleStaffSetupSubmit}
+                        />
+                      </>
+                    }
+                  />
+                  <Route path="inventory" element={<StaffInventory />} />
+                  <Route path="sales" element={<StaffSales />} />
+                  <Route path="stats" element={<StaffStats />} />
+                  <Route path="KOPA" element={<Stafflender />} />
+                  <Route path="Returns" element={<Staffreturns />} />
+                </Routes>
               </ProtectedRoute>
             }
           />
-          <Route path="/staff/inventory" element={<ProtectedRoute><StaffInventory /></ProtectedRoute>} />
-          <Route path="/staff/sales" element={<ProtectedRoute><StaffSales /></ProtectedRoute>} />
-          <Route path="/staff/stats" element={<ProtectedRoute><StaffStats /></ProtectedRoute>} />
-          <Route path="/staff/KOPA" element={<ProtectedRoute><Stafflender /></ProtectedRoute>} />
-          <Route path="/staff/Returns" element={<ProtectedRoute><Staffreturns /></ProtectedRoute>} />
         </Routes>
       </div>
     </Router>

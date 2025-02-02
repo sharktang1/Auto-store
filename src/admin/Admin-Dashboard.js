@@ -5,10 +5,8 @@ import {
   DollarSign, 
   Users, 
   TrendingUp, 
-  ShoppingBag,
-  CheckCircle,
-  RefreshCw,
-  AlertTriangle
+  File, // Replaced ShoppingBag with File
+  RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -17,19 +15,21 @@ import {
   where, 
   onSnapshot, 
   doc, 
-  updateDoc, 
+  updateDoc,
   getDoc,
-  getDocs,
-  setDoc,
   deleteDoc,
-  serverTimestamp,
-  getCountFromServer
+  getCountFromServer,
+  getDocs,
+  serverTimestamp
 } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { db } from '../libs/firebase-config';
 import { toast } from 'react-toastify';
 import Navbar from '../components/Navbar';
+import LentItemsTracker from '../components/LentItemsTracker';
 import { getInitialTheme, initializeThemeListener } from '../utils/theme';
 
+// Reusing existing DashboardCard component
 const DashboardCard = ({ title, value, icon: Icon, color, to, trend }) => {
   const navigate = useNavigate();
   
@@ -60,59 +60,7 @@ const DashboardCard = ({ title, value, icon: Icon, color, to, trend }) => {
   );
 };
 
-const LentItem = ({ item, isDarkMode, onUpdateInventory, isUpdating }) => {
-  const formattedDate = new Date(item.lentDate).toLocaleString();
-  
-  return (
-    <motion.div 
-      className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'} mb-4`}
-      whileHover={{ scale: 1.01 }}
-    >
-      <div className="flex justify-between items-start">
-        <div>
-          <h3 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            {item.itemDetails.name} - {item.itemDetails.brand}
-          </h3>
-          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            AT No: {item.itemDetails.atNo}
-          </p>
-          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            From: {item.fromStoreId} → To: {item.toStoreId}
-          </p>
-          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Type: {item.type}, Quantity: {item.quantity}
-          </p>
-          <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-            Lent on: {formattedDate}
-          </p>
-        </div>
-        
-        <div className="flex flex-col items-end space-y-2">
-          <span className={`px-2 py-1 rounded-full text-xs ${
-            item.status === 'lent' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'
-          }`}>
-            {item.status}
-          </span>
-          {item.status === 'lent' && (
-            <button
-              onClick={() => onUpdateInventory(item)}
-              disabled={isUpdating}
-              className={`flex items-center space-x-1 px-3 py-1 ${
-                isUpdating 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-500 hover:bg-blue-600'
-              } text-white rounded-md text-sm transition-colors`}
-            >
-              <CheckCircle size={16} />
-              <span>{isUpdating ? 'Updating...' : 'Update Inventory'}</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  );
-};
-
+// Return Item Component
 const ReturnItem = ({ item, isDarkMode, onCompleteReturn, isUpdating }) => {
   const formattedDate = new Date(item.returnDate).toLocaleString();
   
@@ -156,9 +104,8 @@ const ReturnItem = ({ item, isDarkMode, onCompleteReturn, isUpdating }) => {
   );
 };
 
-const Dashboard = () => {
+const AdminDashboard = () => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
-  const [lentItems, setLentItems] = useState([]);
   const [returnItems, setReturnItems] = useState([]);
   const [isUpdating, setIsUpdating] = useState(false);
   const [dashboardStats, setDashboardStats] = useState({
@@ -203,15 +150,6 @@ const Dashboard = () => {
 
     fetchDashboardStats();
 
-    const lentQuery = query(collection(db, 'lentshoes'), where('status', '==', 'lent'));
-    const lentUnsubscribe = onSnapshot(lentQuery, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setLentItems(items);
-    });
-
     const returnsQuery = query(collection(db, 'returns'), where('status', '==', 'processed'));
     const returnsUnsubscribe = onSnapshot(returnsQuery, (snapshot) => {
       const items = snapshot.docs.map(doc => ({
@@ -222,84 +160,10 @@ const Dashboard = () => {
     });
 
     return () => {
-      lentUnsubscribe();
       returnsUnsubscribe();
     };
   }, []);
 
-  const handleUpdateInventory = async (item) => {
-    setIsUpdating(true);
-    try {
-      const storeLocationMap = {
-        'Thika-ShopA': 'store-1',
-        'Thika-ShopB': 'store-2'
-      };
-      
-      const targetStoreId = storeLocationMap[item.toStoreId] || 
-        (item.toStoreId.includes('ShopA') ? 'store-1' : 
-         item.toStoreId.includes('ShopB') ? 'store-2' : 
-         'store-1');
-  
-      const destinationQuery = query(
-        collection(db, 'inventory'),
-        where('storeId', '==', targetStoreId),
-        where('atNo', '==', item.itemDetails.atNo),
-        where('brand', '==', item.itemDetails.brand),
-        where('name', '==', item.itemDetails.name),
-        where('category', '==', item.itemDetails.category)
-      );
-  
-      const destinationSnap = await getDocs(destinationQuery);
-  
-      // Additional client-side filtering for sizes and colors
-      const matchingInventoryItems = destinationSnap.docs.filter(doc => {
-        const inventoryData = doc.data();
-        const hasSameSize = inventoryData.sizes.includes(item.itemDetails.sizes[0]);
-        const hasSameColor = inventoryData.colors.includes(item.itemDetails.colors[0]);
-        return hasSameSize && hasSameColor;
-      });
-  
-      if (matchingInventoryItems.length > 0) {
-        // Update existing inventory item
-        const destinationInventoryRef = doc(db, 'inventory', matchingInventoryItems[0].id);
-        const destinationData = matchingInventoryItems[0].data();
-        
-        await updateDoc(destinationInventoryRef, {
-          stock: destinationData.stock + item.quantity,
-          incompletePairs: item.type === 'single' 
-            ? (destinationData.incompletePairs || 0) + 1 
-            : (destinationData.incompletePairs || 0),
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        // Create new inventory item
-        const destinationInventoryRef = doc(collection(db, 'inventory'));
-        await setDoc(destinationInventoryRef, {
-          ...item.itemDetails,
-          storeId: targetStoreId,
-          stock: item.quantity,
-          incompletePairs: item.type === 'single' ? 1 : 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-  
-      // Update lentshoes status
-      const lentShoeRef = doc(db, 'lentshoes', item.id);
-      await updateDoc(lentShoeRef, {
-        status: 'updated',
-        updateDate: serverTimestamp()
-      });
-  
-      toast.success('Inventory updated successfully');
-    } catch (error) {
-      console.error('Error updating inventory:', error);
-      toast.error('Failed to update inventory: ' + error.message);
-    } finally {
-      setIsUpdating(false);
-    }
-  }; 
-  
   const handleCompleteReturn = async (item) => {
     setIsUpdating(true);
     try {
@@ -342,89 +206,54 @@ const Dashboard = () => {
     isAdmin: true
   };
 
- // (Previous code remains the same)
-
- return (
-  <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
-    <div className="fixed top-0 left-0 right-0 z-50">
-      <Navbar
-        username={userData.username}
-        email={userData.email}
-        isAdmin={userData.isAdmin}
-      />
-    </div>
-    
-    <div className="container mx-auto px-4 pt-24 pb-8">
-      <h1 className={`text-3xl font-bold mb-8 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-        Dashboard Overview
-      </h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <DashboardCard
-          title="Total Inventory"
-          value={dashboardStats.totalInventory.toString().padStart(4, '0')}
-          icon={Package}
-          color="bg-blue-500"
-          to="/admin/inventory"
-        />
-        <DashboardCard
-          title="Total Sales"
-          value={`Ksh ${dashboardStats.totalSales.toLocaleString()}`}
-          icon={DollarSign}
-          color="bg-green-500"
-          to="/admin/sales"
-        />
-        <DashboardCard
-          title="Active Staff"
-          value={dashboardStats.activeStaff.toString().padStart(2, '0')}
-          icon={Users}
-          color="bg-purple-500"
-          to="/admin/staff"
-        />
-        <DashboardCard
-          title="Monthly Growth"
-          value={dashboardStats.monthlyGrowth}
-          icon={TrendingUp}
-          color="bg-orange-500"
-          to="/admin/stats"
-          trend={dashboardStats.monthlyGrowth}
+  return (
+    <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
+      <div className="fixed top-0 left-0 right-0 z-50">
+        <Navbar
+          username={userData.username}
+          email={userData.email}
+          isAdmin={userData.isAdmin}
         />
       </div>
+      
+      <div className="container mx-auto px-4 pt-24 pb-8">
+        <h1 className={`text-3xl font-bold mb-8 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          Admin Dashboard Overview
+        </h1>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Pending Inventory Updates */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} w-full`}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              Pending Inventory Updates
-            </h2>
-            <ShoppingBag className={isDarkMode ? 'text-white' : 'text-gray-600'} size={24} />
-          </div>
-          
-          <div className="space-y-4">
-            {lentItems.length === 0 ? (
-              <p className={`text-center py-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                No pending inventory updates
-              </p>
-            ) : (
-              lentItems.map(item => (
-                <LentItem
-                  key={item.id}
-                  item={item}
-                  isDarkMode={isDarkMode}
-                  onUpdateInventory={handleUpdateInventory}
-                  isUpdating={isUpdating}
-                />
-              ))
-            )}
-          </div>
-        </motion.div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <DashboardCard
+            title="Total Inventory"
+            value={dashboardStats.totalInventory.toString().padStart(4, '0')}
+            icon={Package}
+            color="bg-blue-500"
+            to="/admin/inventory"
+          />
+          <DashboardCard
+            title="Total Sales"
+            value={`Ksh ${dashboardStats.totalSales.toLocaleString()}`}
+            icon={DollarSign}
+            color="bg-green-500"
+            to="/admin/sales"
+          />
+          <DashboardCard
+            title="Active Staff"
+            value={dashboardStats.activeStaff.toString().padStart(2, '0')}
+            icon={Users}
+            color="bg-purple-500"
+            to="/admin/staff"
+          />
+          <DashboardCard
+            title="Monthly Growth"
+            value={dashboardStats.monthlyGrowth}
+            icon={TrendingUp}
+            color="bg-orange-500"
+            to="/admin/stats"
+            trend={dashboardStats.monthlyGrowth}
+          />
+        </div>
 
-        {/* Returns */}
+        {/* Returns Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -456,9 +285,11 @@ const Dashboard = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Lent Items Tracker with File Icon */}
+      <LentItemsTracker isDarkMode={isDarkMode} icon={File} />
     </div>
-  </div>
-);
+  );
 };
 
-export default Dashboard;
+export default AdminDashboard;
