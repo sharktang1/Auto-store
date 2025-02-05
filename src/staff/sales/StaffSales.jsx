@@ -1,13 +1,14 @@
 // StaffSales.jsx
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Store } from 'lucide-react';
+import { Plus, Store,Info } from 'lucide-react';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../libs/firebase-config';
 import StaffNavbar from '../../components/StaffNavbar';
 import MakeSale from './MakeSale';
 import ViewSales from './ViewSales';
+import ProductInfoPopup from './ProductInfoPopup';
 import { getInitialTheme, initializeThemeListener } from '../../utils/theme';
 import { toast } from 'react-toastify';
 
@@ -117,6 +118,8 @@ const StaffSales = () => {
   if (!userRole || !['staff', 'staff-admin'].includes(userRole)) {
     return <div>Unauthorized access</div>;
   }
+
+  
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>

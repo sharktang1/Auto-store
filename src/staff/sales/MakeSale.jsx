@@ -23,7 +23,12 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
     isHaggled: false,
     customerName: '',
     customerPhone: '',
-    paymentMethod: 'cash'
+    saleDate: new Date().toISOString().split('T')[0],
+    payments: [
+      { method: 'cash', amount: 0 },
+      { method: 'mpesa', amount: 0 },
+      { method: 'card', amount: 0 }
+    ]
   });
 
   useEffect(() => {
@@ -123,6 +128,19 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
     }));
   };
 
+  const calculateTotalPayments = () => {
+    return saleData.payments.reduce((total, payment) => total + (parseFloat(payment.amount) || 0), 0);
+  };
+
+  const handlePaymentChange = (index, field, value) => {
+    const newPayments = [...saleData.payments];
+    newPayments[index] = {
+      ...newPayments[index],
+      [field]: value
+    };
+    setSaleData(prev => ({ ...prev, payments: newPayments }));
+  };
+
   const validateSaleData = () => {
     if (!selectedProduct) {
       toast.error('Please select a product');
@@ -144,10 +162,15 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
       toast.error('Please enter a valid price');
       return false;
     }
-    if (!saleData.paymentMethod) {
-      toast.error('Please select a payment method');
+
+    const totalAmount = saleData.price * saleData.quantity;
+    const totalPayments = calculateTotalPayments();
+    
+    if (Math.abs(totalAmount - totalPayments) > 0.01) {
+      toast.error(`Total payments (${totalPayments.toFixed(2)}) must equal total amount (${totalAmount.toFixed(2)})`);
       return false;
     }
+
     return true;
   };
 
@@ -178,6 +201,8 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
         }
 
         const saleRef = doc(collection(db, 'sales'));
+        const saleTimestamp = new Date(saleData.saleDate);
+        
         transaction.set(saleRef, {
           ...saleData,
           productId: selectedProduct.id,
@@ -185,13 +210,15 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
           storeLocation: storeData.location,
           storeNumber: storeData.storeNumber,
           userId,
-          timestamp: new Date(),
+          timestamp: saleTimestamp,
+          serverTimestamp: new Date(),
           total: saleData.price * saleData.quantity,
           originalPrice: saleData.originalPrice,
           priceHaggled: saleData.isHaggled,
           discountAmount: saleData.isHaggled ? saleData.originalPrice - saleData.price : 0,
           discountPercentage: saleData.isHaggled ? 
-            ((saleData.originalPrice - saleData.price) / saleData.originalPrice * 100).toFixed(2) : 0
+            ((saleData.originalPrice - saleData.price) / saleData.originalPrice * 100).toFixed(2) : 0,
+          payments: saleData.payments.filter(p => parseFloat(p.amount) > 0)
         });
 
         transaction.update(productRef, {
@@ -367,18 +394,42 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
 
             <div>
               <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                Payment Method
+                Sale Date
               </label>
-              <select
-                value={saleData.paymentMethod}
-                onChange={(e) => setSaleData({ ...saleData, paymentMethod: e.target.value })}
+              <input
+                type="date"
+                value={saleData.saleDate}
+                onChange={(e) => setSaleData(prev => ({ ...prev, saleDate: e.target.value }))}
+                max={new Date().toISOString().split('T')[0]}
                 className={inputClasses}
                 required
-              >
-                <option value="cash">Cash</option>
-                <option value="mpesa">M-Pesa</option>
-                <option value="card">Card</option>
-              </select>
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className={`block mb-2 font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                Payment Details
+              </label>
+              <div className="space-y-4">
+                {saleData.payments.map((payment, index) => (
+                  <div key={payment.method} className="flex items-center space-x-4">
+                    <div className="flex-1">
+                      <label className={`block mb-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        {payment.method.toUpperCase()}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={payment.amount}
+                        onChange={(e) => handlePaymentChange(index, 'amount', parseFloat(e.target.value) || 0)}
+                        className={inputClasses}
+                        placeholder={`Enter ${payment.method} amount`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -405,7 +456,7 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
               />
             </div>
 
-            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <div className={`col-span-2 p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <div className="space-y-2">
                 <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                   <span>Unit Price:</span>
@@ -421,12 +472,21 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
                     <span>KES {((saleData.originalPrice - saleData.price) * saleData.quantity).toFixed(2)}</span>
                   </div>
                 )}
+                <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span>Total Payments:</span>
+                  <span>KES {calculateTotalPayments().toFixed(2)}</span>
+                </div>
                 <div className={`flex justify-between text-lg font-bold pt-2 border-t ${
                   isDarkMode ? 'text-white border-gray-600' : 'text-gray-900 border-gray-300'
                 }`}>
-                  <span>Total:</span>
+                  <span>Total Amount:</span>
                   <span>KES {(saleData.price * saleData.quantity).toFixed(2)}</span>
                 </div>
+                {Math.abs((saleData.price * saleData.quantity) - calculateTotalPayments()) > 0.01 && (
+                  <div className="text-red-500 text-sm mt-2">
+                    Payment amounts must equal total sale amount
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -452,7 +512,7 @@ const MakeSalePage = ({ storeData, userId, userRole, onClose, onSaleComplete, is
         </div>
       </form>
     </div>
-    );
+  );
 };
 
 export default MakeSalePage;

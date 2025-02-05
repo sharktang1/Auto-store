@@ -1,23 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Calendar, Download } from 'lucide-react';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { Search, Calendar, Download, Info } from 'lucide-react';
+import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
 import { toast } from 'react-toastify';
+import ProductInfoPopup from './ProductInfoPopup';
 
 const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
   const [sales, setSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPeriod, setSelectedPeriod] = useState('all');
+  const [selectedDate, setSelectedDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [totalSales, setTotalSales] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
 
   // Fetch sales data
   useEffect(() => {
-    if (!userId || !['staff', 'staff-admin'].includes(userRole)) {
-      console.error('Missing required parameters or unauthorized:', { userId, userRole });
+    if (!storeData.id || !['staff', 'staff-admin'].includes(userRole)) {
+      console.error('Missing required parameters or unauthorized:', { storeData, userRole });
       toast.error('Error: Missing information or unauthorized access');
       setLoading(false);
       return;
@@ -26,8 +29,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
     const salesRef = collection(db, 'sales');
     const salesQuery = query(
       salesRef,
-      where('userId', '==', userId),
-      orderBy('timestamp', 'desc')
+      where('storeId', '==', storeData.id)
     );
 
     const unsubscribe = onSnapshot(
@@ -35,11 +37,19 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
       (snapshot) => {
         try {
           const salesData = snapshot.docs.map(doc => ({
-            id: doc.id,  // Document ID
-            documentId: doc.id,  // Additional field for document ID
+            id: doc.id,
+            documentId: doc.id,
             ...doc.data(),
-            timestamp: doc.data().timestamp?.toDate()
+            timestamp: doc.data().timestamp?.toDate(),
+            serverTimestamp: doc.data().serverTimestamp?.toDate()
           }));
+          
+          salesData.sort((a, b) => {
+            const timeA = a.serverTimestamp || a.timestamp || new Date(0);
+            const timeB = b.serverTimestamp || b.timestamp || new Date(0);
+            return timeB - timeA;
+          });
+          
           console.log('Fetched sales data:', salesData);
           setSales(salesData);
           setLoading(false);
@@ -57,38 +67,20 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
     );
 
     return () => unsubscribe();
-  }, [userId, userRole]);
-
-  // Filter sales based on search term and time period
+  }, [storeData.id, userRole]);
+  
+  // Filter sales based on search term and date
   useEffect(() => {
     let filtered = [...sales];
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    if (selectedPeriod !== 'all') {
+    if (selectedDate) {
+      const selectedDateStart = new Date(selectedDate);
+      const selectedDateEnd = new Date(selectedDate);
+      selectedDateEnd.setDate(selectedDateEnd.getDate() + 1);
+
       filtered = filtered.filter(sale => {
         const saleDate = sale.timestamp;
-        switch (selectedPeriod) {
-          case 'day':
-            return saleDate >= today;
-          case 'week': {
-            const lastWeek = new Date(today);
-            lastWeek.setDate(lastWeek.getDate() - 7);
-            return saleDate >= lastWeek;
-          }
-          case 'month': {
-            const lastMonth = new Date(today);
-            lastMonth.setMonth(lastMonth.getMonth() - 1);
-            return saleDate >= lastMonth;
-          }
-          case 'year': {
-            const lastYear = new Date(today);
-            lastYear.setFullYear(lastYear.getFullYear() - 1);
-            return saleDate >= lastYear;
-          }
-          default:
-            return true;
-        }
+        return saleDate >= selectedDateStart && saleDate < selectedDateEnd;
       });
     }
 
@@ -110,7 +102,27 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
 
     setTotalSales(totals.count);
     setTotalRevenue(totals.revenue);
-  }, [sales, searchTerm, selectedPeriod]);
+  }, [sales, searchTerm, selectedDate]);
+
+  const fetchProductDetails = async (productId) => {
+    try {
+      const productDoc = await getDoc(doc(db, 'inventory', productId));
+      if (productDoc.exists()) {
+        setSelectedProduct(productDoc.data());
+        setIsPopupOpen(true);
+      } else {
+        toast.error('Product details not found');
+      }
+    } catch (error) {
+      console.error('Error fetching product details:', error);
+      toast.error('Error loading product details');
+    }
+  };
+
+  const formatPayments = (payments) => {
+    if (!payments || !Array.isArray(payments)) return 'N/A';
+    return payments.map(p => `${p.method}: KES ${p.amount.toFixed(2)}`).join(', ');
+  };
 
   const exportToCSV = () => {
     try {
@@ -119,7 +131,12 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         return;
       }
 
-      const headers = ['Document ID', 'Date', 'Brand', 'Product', 'Size', 'Quantity', 'Price', 'Total', 'Customer', 'Phone', 'Payment Method'];
+      const headers = [
+        'Document ID', 'Date', 'Brand', 'Product', 'Size', 'Quantity',
+        'Original Price', 'Discounted Price', 'Total', 'Customer', 'Phone',
+        'Payments', 'Discount Amount', 'Discount Percentage', 'Is Haggled'
+      ];
+      
       const csvData = filteredSales.map(sale => [
         sale.documentId || 'N/A',
         sale.timestamp?.toLocaleDateString() || 'N/A',
@@ -127,11 +144,15 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         sale.productName || 'N/A',
         sale.size || 'N/A',
         sale.quantity || 0,
+        sale.originalPrice || 0,
         sale.price || 0,
         sale.total?.toFixed(2) || '0.00',
         sale.customerName || 'N/A',
         sale.customerPhone || 'N/A',
-        sale.paymentMethod || 'N/A'
+        formatPayments(sale.payments),
+        sale.discountAmount || 0,
+        sale.discountPercentage || 0,
+        sale.isHaggled ? 'Yes' : 'No'
       ]);
 
       const csvContent = [headers.join(','), ...csvData.map(row => row.join(','))].join('\n');
@@ -186,21 +207,16 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex items-center gap-2">
             <Calendar size={20} className={isDarkMode ? 'text-gray-200' : 'text-gray-700'} />
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
               className={`p-2 rounded-lg border ${
                 isDarkMode 
                   ? 'bg-gray-700 border-gray-600 text-white' 
                   : 'bg-white border-gray-300'
               }`}
-            >
-              <option value="all">All Time</option>
-              <option value="day">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="year">This Year</option>
-            </select>
+            />
           </div>
 
           <motion.button
@@ -246,17 +262,20 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
               <th className="p-3 text-left">Product</th>
               <th className="p-3 text-center">Size</th>
               <th className="p-3 text-right">Quantity</th>
-              <th className="p-3 text-right">Price</th>
+              <th className="p-3 text-right">Original Price</th>
+              <th className="p-3 text-right">Discounted Price</th>
               <th className="p-3 text-right">Total</th>
               <th className="p-3 text-left">Customer</th>
               <th className="p-3 text-left">Phone</th>
-              <th className="p-3 text-left">Payment</th>
+              <th className="p-3 text-left">Payments</th>
+              <th className="p-3 text-center">Haggled</th>
+              <th className="p-3 text-center">Info</th>
             </tr>
           </thead>
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan={11} className="text-center py-4">
+                <td colSpan={14} className="text-center py-4">
                   <p className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
                     No sales records found
                   </p>
@@ -280,17 +299,38 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
                   <td className="p-3">{sale.productName}</td>
                   <td className="p-3 text-center">{sale.size}</td>
                   <td className="p-3 text-right">{sale.quantity}</td>
+                  <td className="p-3 text-right">KES {sale.originalPrice?.toFixed(2)}</td>
                   <td className="p-3 text-right">KES {sale.price?.toFixed(2)}</td>
                   <td className="p-3 text-right">KES {sale.total?.toFixed(2)}</td>
                   <td className="p-3">{sale.customerName || 'N/A'}</td>
                   <td className="p-3">{sale.customerPhone || 'N/A'}</td>
-                  <td className="p-3 capitalize">{sale.paymentMethod}</td>
+                  <td className="p-3">{formatPayments(sale.payments)}</td>
+                  <td className="p-3 text-center">
+                    {sale.isHaggled ? '✓' : '-'}
+                  </td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => fetchProductDetails(sale.productId)}
+                      className={`hover:opacity-75 transition-opacity ${
+                        isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                      }`}
+                    >
+                      <Info size={18} />
+                    </button>
+                  </td>
                 </motion.tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      <ProductInfoPopup
+        isOpen={isPopupOpen}
+        onClose={() => setIsPopupOpen(false)}
+        productData={selectedProduct}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 };
