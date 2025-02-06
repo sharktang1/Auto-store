@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Store, History, Download } from 'lucide-react';
+import { Plus, Store, History } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
@@ -59,9 +59,23 @@ const InventoryPage = () => {
   }, []);
 
   const handleEditItem = (item) => {
+    if (selectedStore === 'all') {
+      alert('Please select a specific store to edit inventory items');
+      return;
+    }
     setSelectedItem(item);
     setIsUpdateMode(true);
   };
+
+  const toggleUpdateMode = () => {
+    if (selectedStore === 'all' && !isUpdateMode) {
+      alert('Please select a specific store to add new inventory items');
+      return;
+    }
+    setSelectedItem(null);
+    setIsUpdateMode(!isUpdateMode);
+  };
+
 
   const handleInventoryUpdate = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -116,30 +130,27 @@ const InventoryPage = () => {
             </div>
 
             <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => {
-                setSelectedItem(null);
-                setIsUpdateMode(!isUpdateMode);
-              }}
-              className={`flex items-center justify-center px-4 py-2 rounded-lg ${
-                isUpdateMode
-                  ? 'bg-gray-500 hover:bg-gray-600'
-                  : 'bg-blue-500 hover:bg-blue-600'
-              } text-white min-w-[140px]`}
-            >
-              {isUpdateMode ? (
-                <div className="flex items-center gap-2">
-                  <History size={20} />
-                  View Inventory
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Plus size={20} />
-                  Add New Item
-                </div>
-              )}
-            </motion.button>
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={toggleUpdateMode}
+      className={`flex items-center justify-center px-4 py-2 rounded-lg ${
+        isUpdateMode
+          ? 'bg-gray-500 hover:bg-gray-600'
+          : 'bg-blue-500 hover:bg-blue-600'
+      } text-white min-w-[140px]`}
+    >
+      {isUpdateMode ? (
+        <div className="flex items-center gap-2">
+          <History size={20} />
+          View Inventory
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Plus size={20} />
+          Add New Item
+        </div>
+      )}
+    </motion.button>
           </div>
         </div>
 

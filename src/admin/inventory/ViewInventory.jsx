@@ -5,7 +5,6 @@ import { filterInventory, deleteInventoryItem } from '../../utils/admin-inventor
 
 const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdate }) => {
   const [inventory, setInventory] = useState([]);
-  const [searchParams, setSearchParams] = useState([]);
   const [searchInput, setSearchInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,57 +14,32 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     const loadInventory = async () => {
       try {
         setLoading(true);
-        let filtered = await filterInventory(selectedStore);
-        
-        // Apply multi-parameter search filtering
-        if (searchParams.length > 0) {
-          filtered = filtered.filter(item => {
-            return searchParams.every(param => {
-              const paramLower = param.toLowerCase().trim();
-              return (
-                item.atNo?.toLowerCase().includes(paramLower) ||
-                item.name?.toLowerCase().includes(paramLower) ||
-                item.brand?.toLowerCase().includes(paramLower) ||
-                item.category?.toLowerCase().includes(paramLower) ||
-                item.colors?.some(color => color.toLowerCase().includes(paramLower)) ||
-                item.sizes?.some(size => size.toString().includes(paramLower)) ||
-                item.gender?.toLowerCase().includes(paramLower) ||
-                item.ageGroup?.toLowerCase().includes(paramLower)
-              );
-            });
-          });
-        }
-
-        const processedInventory = filtered.map(item => ({
-          ...item,
-          sizes: Array.isArray(item.sizes) ? item.sizes : (item.sizes || '').split(',').map(s => s.trim()).filter(Boolean),
-          colors: Array.isArray(item.colors) ? item.colors : (item.colors || '').split(',').map(c => c.trim()).filter(Boolean),
-          incompletePairs: item.incompletePairs || 0,
-          notes: item.notes || ''
-        }));
-        setInventory(processedInventory);
+        let filtered = await filterInventory(selectedStore, searchInput);
+        setInventory(filtered);
         setError(null);
       } catch (err) {
-        setError('Failed to load inventory');
-        console.error(err);
+        console.error('Error loading inventory:', err);
+        setError('Failed to load inventory. Please try refreshing the page.');
+        setInventory([]);
       } finally {
         setLoading(false);
       }
     };
 
     loadInventory();
-  }, [selectedStore, searchParams]);
+  }, [selectedStore, searchInput]);
 
   const handleSearchInput = (e) => {
     const value = e.target.value;
     setSearchInput(value);
-    
-    // Split the search input by '+' and trim each parameter
-    const params = value.split('+').map(param => param.trim()).filter(param => param.length > 0);
-    setSearchParams(params);
   };
 
   const handleDelete = async (itemId) => {
+    if (!itemId) {
+      setError('Cannot delete item: Invalid item ID');
+      return;
+    }
+
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         await deleteInventoryItem(itemId);
@@ -73,15 +47,15 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
         setInventory(updatedInventory);
         if (onInventoryUpdate) onInventoryUpdate();
       } catch (err) {
-        setError('Failed to delete item');
-        console.error(err);
+        console.error('Error deleting item:', err);
+        setError('Failed to delete item. Please try again.');
       }
     }
   };
 
   const calculateTotalShoes = (item) => {
-    const completePairs = item.stock - item.incompletePairs;
-    return (completePairs * 2) + parseInt(item.incompletePairs);
+    const completePairs = item.stock - (item.incompletePairs || 0);
+    return (completePairs * 2) + parseInt(item.incompletePairs || 0);
   };
 
   const exportToCSV = () => {
@@ -100,7 +74,8 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
         'Colors',
         'Age Group',
         'Gender',
-        'Notes'
+        'Notes',
+        'Date Added'
       ];
 
       const csvData = inventory.map(item => [
@@ -110,14 +85,15 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
         item.category,
         item.price,
         item.stock,
-        item.stock - item.incompletePairs,
-        item.incompletePairs,
+        item.stock - (item.incompletePairs || 0),
+        item.incompletePairs || 0,
         calculateTotalShoes(item),
-        item.sizes.join(', '),
-        item.colors.join(', '),
-        item.ageGroup,
-        item.gender,
-        item.notes
+        Array.isArray(item.sizes) ? item.sizes.join(', ') : '',
+        Array.isArray(item.colors) ? item.colors.join(', ') : '',
+        item.ageGroup || '',
+        item.gender || '',
+        item.notes || '',
+        item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''
       ]);
 
       const csvContent = [
@@ -137,13 +113,131 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     }
   };
 
-  if (error) {
+  const renderContent = () => {
+    if (error) {
+      return (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      );
+    }
+
+    if (loading) {
+      return (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className={`h-12 w-full rounded ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} animate-pulse`} />
+          ))}
+        </div>
+      );
+    }
+
     return (
-      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-        {error}
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>
+              <th className="p-3 text-left">@No</th>
+              <th className="p-3 text-left">Product</th>
+              <th className="p-3 text-left">Brand</th>
+              <th className="p-3 text-left">Category</th>
+              <th className="p-3 text-right">Price</th>
+              <th className="p-3 text-right">Total Pairs</th>
+              <th className="p-3 text-right">Complete</th>
+              <th className="p-3 text-right">Incomplete</th>
+              <th className="p-3 text-center">Total Shoes</th>
+              <th className="p-3 text-center">Sizes</th>
+              <th className="p-3 text-center">Colors</th>
+              <th className="p-3 text-center">Date Added</th>
+              <th className="p-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inventory.length === 0 ? (
+              <tr>
+                <td colSpan="13" className="text-center p-4">
+                  No items found
+                </td>
+              </tr>
+            ) : (
+              inventory.map((item) => (
+                <motion.tr
+                  key={item.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className={`border-t ${
+                    isDarkMode ? 'border-gray-700 text-gray-200' : 'border-gray-200 text-gray-700'
+                  }`}
+                >
+                  <td className="p-3">{item.atNo}</td>
+                  <td className="p-3">
+                    <div className="flex items-center">
+                      {item.name}
+                      {item.incompletePairs > 0 && (
+                        <AlertCircle
+                          size={16}
+                          className="ml-2 text-amber-500"
+                          title={`${item.incompletePairs} pairs missing one shoe`}
+                        />
+                      )}
+                    </div>
+                    {item.notes && (
+                      <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {item.notes}
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3">{item.brand}</td>
+                  <td className="p-3">{item.category}</td>
+                  <td className="p-3 text-right">${item.price}</td>
+                  <td className="p-3 text-right">{item.stock}</td>
+                  <td className="p-3 text-right">{item.stock - (item.incompletePairs || 0)}</td>
+                  <td className="p-3 text-right">
+                    {item.incompletePairs > 0 ? (
+                      <span className="text-amber-500">{item.incompletePairs}</span>
+                    ) : (
+                      '0'
+                    )}
+                  </td>
+                  <td className="p-3 text-center">{calculateTotalShoes(item)}</td>
+                  <td className="p-3 text-center">{Array.isArray(item.sizes) ? item.sizes.join(', ') : ''}</td>
+                  <td className="p-3 text-center">{Array.isArray(item.colors) ? item.colors.join(', ') : ''}</td>
+                  <td className="p-3 text-center">
+                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}
+                  </td>
+                  <td className="p-3">
+                    <div className="flex justify-center gap-2">
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => onEditItem({
+                          ...item,
+                          date: item.createdAt ? new Date(item.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+                        })}
+                        className="p-1 text-blue-500 hover:text-blue-600"
+                        title="Edit item"
+                      >
+                        <Edit size={18} />
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => handleDelete(item.id)}
+                        className="p-1 text-red-500 hover:text-red-600"
+                        title="Delete item"
+                      >
+                        <Trash2 size={18} />
+                      </motion.button>
+                    </div>
+                  </td>
+                </motion.tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     );
-  }
+  };
 
   return (
     <div className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
@@ -211,110 +305,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
         </div>
       </div>
 
-      {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className={`h-12 w-full rounded ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} animate-pulse`} />
-          ))}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>
-                <th className="p-3 text-left">@No</th>
-                <th className="p-3 text-left">Product</th>
-                <th className="p-3 text-left">Brand</th>
-                <th className="p-3 text-left">Category</th>
-                <th className="p-3 text-right">Price</th>
-                <th className="p-3 text-right">Total Pairs</th>
-                <th className="p-3 text-right">Complete</th>
-                <th className="p-3 text-right">Incomplete</th>
-                <th className="p-3 text-center">Total Shoes</th>
-                <th className="p-3 text-center">Sizes</th>
-                <th className="p-3 text-center">Colors</th>
-                <th className="p-3 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inventory.length === 0 ? (
-                <tr>
-                  <td colSpan="12" className="text-center p-4">
-                    No items found
-                  </td>
-                </tr>
-              ) : (
-                inventory.map((item) => (
-                  <motion.tr
-                    key={item.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className={`border-t ${
-                      isDarkMode ? 'border-gray-700 text-gray-200' : 'border-gray-200 text-gray-700'
-                    }`}
-                  >
-                    <td className="p-3">{item.atNo}</td>
-                    <td className="p-3">
-                      <div className="flex items-center">
-                        {item.name}
-                        {item.incompletePairs > 0 && (
-                          <AlertCircle
-                            size={16}
-                            className="ml-2 text-amber-500"
-                            title={`${item.incompletePairs} pairs missing one shoe`}
-                          />
-                        )}
-                      </div>
-                      {item.notes && (
-                        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {item.notes}
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-3">{item.brand}</td>
-                    <td className="p-3">{item.category}</td>
-                    <td className="p-3 text-right">${item.price}</td>
-                    <td className="p-3 text-right">{item.stock}</td>
-                    <td className="p-3 text-right">{item.stock - item.incompletePairs}</td>
-                    <td className="p-3 text-right">
-                      {item.incompletePairs > 0 ? (
-                        <span className="text-amber-500">{item.incompletePairs}</span>
-                      ) : (
-                        '0'
-                      )}
-                    </td>
-                    <td className="p-3 text-center">{calculateTotalShoes(item)}</td>
-                    <td className="p-3 text-center">{item.sizes.join(', ')}</td>
-                    <td className="p-3 text-center">{item.colors.join(', ')}</td>
-                    <td className="p-3">
-                      <div className="flex justify-center gap-2">
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => onEditItem(item)}
-                          className="p-1 text-blue-500 hover:text-blue-600"
-                          title="Edit item"
-                        >
-                          <Edit size={18} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => handleDelete(item.id)}
-                          className="p-1 text-red-500 hover:text-red-600"
-                          title="Delete item"
-                        >
-                          <Trash2 size={18} />
-                        </motion.button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {renderContent()}
     </div>
   );
 };
