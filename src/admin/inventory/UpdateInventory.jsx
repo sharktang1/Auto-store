@@ -1,9 +1,62 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { HelpCircle } from 'lucide-react';
-import { addInventoryItem, updateInventoryItem } from '../../utils/admin-inventory';
+import { HelpCircle, ClipboardPaste } from 'lucide-react';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../libs/firebase-config';
+import { toast } from 'react-toastify';
 
-const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventoryUpdate }) => {
+// Firebase operations
+const updateInventoryItem = async (data) => {
+  if (!data.id) {
+    throw new Error('Item ID is required for update');
+  }
+  
+  const itemRef = doc(db, 'inventory', data.id);
+  
+  // Create a clean update object without undefined values
+  const updateData = {
+    atNo: data.atNo,
+    name: data.name,
+    brand: data.brand,
+    category: data.category,
+    sizes: data.sizes,
+    colors: data.colors,
+    price: data.price,
+    stock: data.stock,
+    incompletePairs: data.incompletePairs,
+    notes: data.notes,
+    ageGroup: data.ageGroup,
+    gender: data.gender,
+    storeId: data.storeId,
+    date: data.date
+  };
+
+  // Remove any undefined or null values
+  Object.keys(updateData).forEach(key => {
+    if (updateData[key] === undefined || updateData[key] === null) {
+      delete updateData[key];
+    }
+  });
+  
+  await updateDoc(itemRef, updateData);
+};
+
+const addInventoryItem = async (data) => {
+  const inventoryRef = collection(db, 'inventory');
+  await addDoc(inventoryRef, {
+    ...data,
+    createdAt: new Date().toISOString()
+  });
+};
+
+const UpdateInventory = ({ 
+  item, 
+  onClose, 
+  isDarkMode, 
+  selectedStore, 
+  onInventoryUpdate,
+  copiedItemData 
+}) => {
   const [formData, setFormData] = useState({
     atNo: '',
     name: '',
@@ -30,7 +83,12 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
       return;
     }
 
-    if (item) {
+    if (copiedItemData) {
+      setFormData({
+        ...copiedItemData,
+        storeId: selectedStore
+      });
+    } else if (item) {
       setFormData({
         ...item,
         date: item.date || (item.createdAt ? new Date(item.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
@@ -42,18 +100,140 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
     } else {
       setFormData(prev => ({
         ...prev,
-        atNo: '',
-        storeId: selectedStore,
-        sizes: '',
-        colors: '',
-        stock: 0,
-        incompletePairs: 0,
-        notes: '',
-        price: '',
-        date: prev.date
+        storeId: selectedStore
       }));
     }
-  }, [item, selectedStore]);
+  }, [item, selectedStore, copiedItemData]);
+
+  const fetchLentItems = async () => {
+    try {
+      const lentQuery = query(
+        collection(db, 'lentshoes'),
+        where('status', '!=', 'updated')
+      );
+      
+      const snapshot = await getDocs(lentQuery);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
+      console.error('Error fetching lent items:', error);
+      toast.error('Failed to fetch lent items');
+      return [];
+    }
+  };
+
+  const handlePasteFromLent = async () => {
+    try {
+      const lentItems = await fetchLentItems();
+      
+      if (!lentItems || lentItems.length === 0) {
+        toast.info('No lent items available to paste');
+        return;
+      }
+
+      if (lentItems.length === 1) {
+        pasteItemData(lentItems[0]);
+      } else {
+        const selectedItem = await showItemSelectionModal(lentItems);
+        if (selectedItem) {
+          pasteItemData(selectedItem);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling paste:', error);
+      toast.error('Failed to paste item data');
+    }
+  };
+
+  const showItemSelectionModal = (items) => {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = `fixed inset-0 bg-black bg-opacity-50 z-[70] flex items-center justify-center ${
+        isDarkMode ? 'text-white' : 'text-gray-900'
+      }`;
+
+      const content = document.createElement('div');
+      content.className = `w-full max-w-md p-6 rounded-lg ${
+        isDarkMode ? 'bg-gray-800' : 'bg-white'
+      }`;
+      
+      content.innerHTML = `
+        <h3 class="text-lg font-medium mb-4">Select Item to Paste</h3>
+        <div class="space-y-2">
+          ${items.map((item, index) => `
+            <button
+              data-index="${index}"
+              class="w-full text-left p-3 rounded-lg ${
+                isDarkMode 
+                  ? 'hover:bg-gray-700 focus:bg-gray-700' 
+                  : 'hover:bg-gray-100 focus:bg-gray-100'
+              }"
+            >
+              ${item.itemDetails.name} - ${item.itemDetails.brand}
+              <div class="text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}">
+                From: ${item.fromStoreId} | Quantity: ${item.quantity}
+              </div>
+            </button>
+          `).join('')}
+        </div>
+        <button
+          id="cancelSelect"
+          class="mt-4 px-4 py-2 rounded-lg ${
+            isDarkMode
+              ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+              : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+          }"
+        >
+          Cancel
+        </button>
+      `;
+
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+
+      content.querySelectorAll('button:not(#cancelSelect)').forEach(button => {
+        button.addEventListener('click', () => {
+          const selectedItem = items[parseInt(button.dataset.index)];
+          document.body.removeChild(modal);
+          resolve(selectedItem);
+        });
+      });
+
+      document.getElementById('cancelSelect').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        resolve(null);
+      });
+    });
+  };
+
+  const pasteItemData = (lentItem) => {
+    const itemDetails = lentItem.itemDetails;
+    
+    setFormData({
+      ...formData,
+      atNo: itemDetails.atNo || '',
+      name: itemDetails.name || '',
+      brand: itemDetails.brand || '',
+      category: itemDetails.category || '',
+      sizes: Array.isArray(itemDetails.sizes) 
+        ? itemDetails.sizes.join(', ') 
+        : itemDetails.sizes || '',
+      colors: Array.isArray(itemDetails.colors) 
+        ? itemDetails.colors.join(', ') 
+        : itemDetails.colors || '',
+      price: itemDetails.price || '',
+      stock: parseInt(lentItem.quantity) || 0,
+      incompletePairs: 0,
+      notes: `Lent from ${lentItem.fromStoreId} on ${new Date(lentItem.lentDate).toLocaleDateString()}`,
+      ageGroup: itemDetails.ageGroup || '',
+      gender: itemDetails.gender || '',
+      storeId: selectedStore
+    });
+
+    toast.success('Item details pasted successfully!');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -85,11 +265,12 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
         stock: parseInt(formData.stock),
         incompletePairs: parseInt(formData.incompletePairs),
         storeId: selectedStore,
-        date: formData.date,
-        createdAt: undefined
+        date: formData.date
       };
 
       if (item) {
+        // Add the id for update operations
+        processedData.id = item.id;
         await updateInventoryItem(processedData);
       } else {
         await addInventoryItem(processedData);
@@ -136,6 +317,23 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="flex justify-end">
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handlePasteFromLent}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                isDarkMode
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-blue-500 hover:bg-blue-600'
+              } text-white`}
+            >
+              <ClipboardPaste size={16} />
+              <span>Paste from Lent Items</span>
+            </motion.button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
@@ -399,24 +597,24 @@ const UpdateInventory = ({ item, onClose, isDarkMode, selectedStore, onInventory
                 <option value="Unisex">Unisex</option>
               </select>
             </div>
-          </div>
 
-          <div>
-            <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-              Notes About Incomplete Pairs
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className={`w-full p-2 rounded-lg border ${
-                isDarkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300'
-              }`}
-              rows="3"
-              placeholder="Specify which shoes are missing (e.g., 'Size 9 missing left shoe', 'Size 10 missing right shoe')"
-              disabled={loading}
-            />
+            <div className="md:col-span-2">
+              <label className={`block mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                Notes
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className={`w-full p-2 rounded-lg border ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300'
+                }`}
+                rows="3"
+                placeholder="Add any additional notes about the item"
+                disabled={loading}
+              />
+            </div>
           </div>
 
           <div className="flex justify-end space-x-4">

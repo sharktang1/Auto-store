@@ -7,6 +7,7 @@ import { db } from '../../libs/firebase-config';
 import Navbar from '../../components/Navbar';
 import UpdateInventory from './UpdateInventory';
 import ViewInventory from './ViewInventory';
+import LentItemsTracker from '../../components/LentItemsTracker';
 import { initializeThemeListener, getInitialTheme } from '../../utils/theme';
 import { initializeInventory } from '../../utils/admin-inventory';
 
@@ -18,6 +19,7 @@ const InventoryPage = () => {
   const [stores, setStores] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [copiedItemData, setCopiedItemData] = useState(null);
 
   useEffect(() => {
     const cleanup = initializeThemeListener(setIsDarkMode);
@@ -58,6 +60,12 @@ const InventoryPage = () => {
     return cleanup;
   }, []);
 
+  const handleCopiedItem = (itemData) => {
+    setCopiedItemData(itemData);
+    setIsUpdateMode(true);
+    setSelectedItem(null);
+  };
+
   const handleEditItem = (item) => {
     if (selectedStore === 'all') {
       alert('Please select a specific store to edit inventory items');
@@ -65,6 +73,7 @@ const InventoryPage = () => {
     }
     setSelectedItem(item);
     setIsUpdateMode(true);
+    setCopiedItemData(null);
   };
 
   const toggleUpdateMode = () => {
@@ -74,8 +83,8 @@ const InventoryPage = () => {
     }
     setSelectedItem(null);
     setIsUpdateMode(!isUpdateMode);
+    setCopiedItemData(null);
   };
-
 
   const handleInventoryUpdate = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -130,27 +139,27 @@ const InventoryPage = () => {
             </div>
 
             <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={toggleUpdateMode}
-      className={`flex items-center justify-center px-4 py-2 rounded-lg ${
-        isUpdateMode
-          ? 'bg-gray-500 hover:bg-gray-600'
-          : 'bg-blue-500 hover:bg-blue-600'
-      } text-white min-w-[140px]`}
-    >
-      {isUpdateMode ? (
-        <div className="flex items-center gap-2">
-          <History size={20} />
-          View Inventory
-        </div>
-      ) : (
-        <div className="flex items-center gap-2">
-          <Plus size={20} />
-          Add New Item
-        </div>
-      )}
-    </motion.button>
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={toggleUpdateMode}
+              className={`flex items-center justify-center px-4 py-2 rounded-lg ${
+                isUpdateMode
+                  ? 'bg-gray-500 hover:bg-gray-600'
+                  : 'bg-blue-500 hover:bg-blue-600'
+              } text-white min-w-[140px]`}
+            >
+              {isUpdateMode ? (
+                <div className="flex items-center gap-2">
+                  <History size={20} />
+                  View Inventory
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Plus size={20} />
+                  Add New Item
+                </div>
+              )}
+            </motion.button>
           </div>
         </div>
 
@@ -161,9 +170,11 @@ const InventoryPage = () => {
             onClose={() => {
               setIsUpdateMode(false);
               setSelectedItem(null);
+              setCopiedItemData(null);
             }}
             onInventoryUpdate={handleInventoryUpdate}
             isDarkMode={isDarkMode}
+            copiedItemData={copiedItemData}
           />
         ) : (
           <ViewInventory
@@ -175,6 +186,10 @@ const InventoryPage = () => {
           />
         )}
       </div>
+      <LentItemsTracker 
+        isDarkMode={isDarkMode} 
+        onCopyItem={handleCopiedItem}
+      />
     </div>
   );
 };

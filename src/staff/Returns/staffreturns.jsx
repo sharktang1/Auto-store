@@ -8,7 +8,10 @@ import {
   collection, 
   doc,
   getDoc,
-  addDoc 
+  addDoc,
+  query,
+  where,
+  getDocs
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { toast } from 'react-toastify';
@@ -19,6 +22,7 @@ const StaffReturns = () => {
   const [saleDetails, setSaleDetails] = useState(null);
   const [returnReason, setReturnReason] = useState('');
   const [loading, setLoading] = useState(false);
+  const [processingReturn, setProcessingReturn] = useState(false);
   const [returnOptions, setReturnOptions] = useState([
     'Defective Product',
     'Wrong Size',
@@ -49,6 +53,17 @@ const StaffReturns = () => {
       const saleSnap = await getDoc(saleRef);
   
       if (saleSnap.exists()) {
+        // Check if a return already exists for this sale
+        const returnsRef = collection(db, 'returns');
+        const q = query(returnsRef, where('originalSaleId', '==', saleId.trim()));
+        const returnSnap = await getDocs(q);
+        
+        if (!returnSnap.empty) {
+          toast.error('A return has already been processed for this sale');
+          setLoading(false);
+          return;
+        }
+
         setSaleDetails({ id: saleSnap.id, ...saleSnap.data() });
       } else {
         toast.error('No sale found with this ID');
@@ -76,8 +91,26 @@ const StaffReturns = () => {
       return;
     }
 
+    if (processingReturn) {
+      return; // Prevent multiple submissions
+    }
+
+    setProcessingReturn(true);
+
     try {
       const db = getFirestore();
+      
+      // Double-check for existing return before processing
+      const returnsRef = collection(db, 'returns');
+      const q = query(returnsRef, where('originalSaleId', '==', saleDetails.id));
+      const returnSnap = await getDocs(q);
+      
+      if (!returnSnap.empty) {
+        toast.error('A return has already been processed for this sale');
+        setProcessingReturn(false);
+        return;
+      }
+
       const auth = getAuth();
       const currentUser = auth.currentUser;
 
@@ -122,6 +155,8 @@ const StaffReturns = () => {
     } catch (error) {
       console.error('Error processing return:', error);
       toast.error('Error processing return');
+    } finally {
+      setProcessingReturn(false);
     }
   };
 
@@ -161,7 +196,7 @@ const StaffReturns = () => {
               isDarkMode 
                 ? 'bg-blue-600 text-white hover:bg-blue-700' 
                 : 'bg-blue-500 text-white hover:bg-blue-600'
-            }`}
+            } ${loading || processingReturn ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {loading ? 'Searching...' : 'Find Sale'}
           </motion.button>
@@ -195,6 +230,7 @@ const StaffReturns = () => {
                       ? 'bg-gray-700 border-gray-600 text-white' 
                       : 'bg-white border-gray-300 text-gray-900'
                   }`}
+                  disabled={processingReturn}
                 >
                   <option value="">Select Return Reason</option>
                   {returnOptions.map(option => (
@@ -214,6 +250,7 @@ const StaffReturns = () => {
                       : 'bg-white border-gray-300 text-gray-900'
                   }`}
                   rows={3}
+                  disabled={processingReturn}
                 />
               )}
 
@@ -221,13 +258,14 @@ const StaffReturns = () => {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={processReturn}
+                disabled={processingReturn}
                 className={`w-full py-3 rounded-lg ${
                   isDarkMode 
                     ? 'bg-green-600 text-white hover:bg-green-700' 
                     : 'bg-green-500 text-white hover:bg-green-600'
-                }`}
+                } ${processingReturn ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                Complete Return
+                {processingReturn ? 'Processing...' : 'Complete Return'}
               </motion.button>
             </div>
           )}

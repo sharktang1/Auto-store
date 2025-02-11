@@ -9,8 +9,8 @@ import {
   Calendar,
   Store,
   Users,
-  Clock,
-  Bell
+  Bell,
+  Clock
 } from 'lucide-react';
 import { 
   collection, 
@@ -32,6 +32,9 @@ const LentItemsTracker = ({ isDarkMode }) => {
   const [staffNames, setStaffNames] = useState({});
 
   useEffect(() => {
+    // Expose lent items data globally
+    window.getLentItems = () => lentItems;
+
     // Fetch lent items
     const lentQuery = query(collection(db, 'lentshoes'), where('status', '==', 'lent'));
     const unsubscribeLent = onSnapshot(lentQuery, (snapshot) => {
@@ -97,6 +100,7 @@ const LentItemsTracker = ({ isDarkMode }) => {
     return () => {
       unsubscribeLent();
       unsubscribeNotifications();
+      delete window.getLentItems;
     };
   }, []);
 
@@ -236,7 +240,6 @@ const LentItemsTracker = ({ isDarkMode }) => {
               </div>
 
               {activeTab === 'lent' ? (
-                // Lent Items Section
                 lentItems.length === 0 ? (
                   <p className={`text-center py-8 ${
                     isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -307,7 +310,6 @@ const LentItemsTracker = ({ isDarkMode }) => {
                   </div>
                 )
               ) : (
-                // Notifications Section
                 notifications.length === 0 ? (
                   <p className={`text-center py-8 ${
                     isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -361,7 +363,19 @@ const LentItemsTracker = ({ isDarkMode }) => {
                             <ItemDetailSection label="Request Date" icon={Calendar}>
                               {notification.timestamp.toDate().toLocaleString()}
                             </ItemDetailSection>
+
+                            {notification.urgency && (
+                              <ItemDetailSection label="Urgency" icon={Clock}>
+                                {notification.urgency}
+                              </ItemDetailSection>
+                            )}
                           </div>
+
+                          {notification.notes && (
+                            <ItemDetailSection label="Notes" className="col-span-full">
+                              {notification.notes}
+                            </ItemDetailSection>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -31,7 +31,7 @@ import Staffreturns from './staff/Returns/staffreturns';
 // Utils
 import { getInitialTheme } from './utils/theme';
 
-// AdminLayout Component
+// AdminLayout Component with copied item functionality
 const AdminLayout = ({ children }) => {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme());
   const [userData, setUserData] = useState({
@@ -39,10 +39,16 @@ const AdminLayout = ({ children }) => {
     email: '',
     isAdmin: true
   });
+  const [copiedItemData, setCopiedItemData] = useState(null);
   const location = useLocation();
 
   // Check if current route is a sales page
   const isSalesPage = location.pathname.includes('/sales');
+
+  const handleCopyItem = (itemData) => {
+    setCopiedItemData(itemData);
+    toast.success('Item copied successfully!');
+  };
 
   useEffect(() => {
     const darkModeListener = window.matchMedia('(prefers-color-scheme: dark)');
@@ -70,8 +76,8 @@ const AdminLayout = ({ children }) => {
         email={userData.email}
         isAdmin={userData.isAdmin}
       />
-      {children}
-      {!isSalesPage && <LentItemsTracker isDarkMode={isDarkMode} />}
+      {React.cloneElement(children, { copiedItemData })}
+      {!isSalesPage && <LentItemsTracker isDarkMode={isDarkMode} onCopyItem={handleCopyItem} />}
     </div>
   );
 };
@@ -273,7 +279,7 @@ function App() {
         </Routes>
       </div>
     </Router>
-  );
+  );  
 }
 
 export default App;

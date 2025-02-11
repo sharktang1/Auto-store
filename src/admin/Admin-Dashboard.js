@@ -5,7 +5,7 @@ import {
   DollarSign, 
   Users, 
   TrendingUp, 
-  File, // Replaced ShoppingBag with File
+  File,
   RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -29,7 +29,6 @@ import Navbar from '../components/Navbar';
 import LentItemsTracker from '../components/LentItemsTracker';
 import { getInitialTheme, initializeThemeListener } from '../utils/theme';
 
-// Reusing existing DashboardCard component
 const DashboardCard = ({ title, value, icon: Icon, color, to, trend }) => {
   const navigate = useNavigate();
   
@@ -60,7 +59,6 @@ const DashboardCard = ({ title, value, icon: Icon, color, to, trend }) => {
   );
 };
 
-// Return Item Component
 const ReturnItem = ({ item, isDarkMode, onCompleteReturn, isUpdating }) => {
   const formattedDate = new Date(item.returnDate).toLocaleString();
   
@@ -150,7 +148,11 @@ const AdminDashboard = () => {
 
     fetchDashboardStats();
 
-    const returnsQuery = query(collection(db, 'returns'), where('status', '==', 'processed'));
+    const returnsQuery = query(
+      collection(db, 'returns'), 
+      where('status', '==', 'processed')
+    );
+    
     const returnsUnsubscribe = onSnapshot(returnsQuery, (snapshot) => {
       const items = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -189,7 +191,11 @@ const AdminDashboard = () => {
         await deleteDoc(doc(db, 'sales', item.originalSaleId));
       }
   
-      await deleteDoc(doc(db, 'returns', item.id));
+      await updateDoc(doc(db, 'returns', item.id), {
+        status: 'returned',
+        returnCompletedAt: serverTimestamp(),
+        returnProcessedBy: getAuth().currentUser?.uid || null
+      });
   
       toast.success('Return processed successfully');
     } catch (error) {
@@ -253,7 +259,6 @@ const AdminDashboard = () => {
           />
         </div>
 
-        {/* Returns Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -286,7 +291,6 @@ const AdminDashboard = () => {
         </motion.div>
       </div>
 
-      {/* Lent Items Tracker with File Icon */}
       <LentItemsTracker isDarkMode={isDarkMode} icon={File} />
     </div>
   );
