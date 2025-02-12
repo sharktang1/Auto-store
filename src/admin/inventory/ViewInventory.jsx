@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Edit, Trash2, AlertCircle, Info, Download } from 'lucide-react';
 import { filterInventory, deleteInventoryItem } from '../../utils/admin-inventory';
@@ -6,16 +6,41 @@ import { filterInventory, deleteInventoryItem } from '../../utils/admin-inventor
 const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdate }) => {
   const [inventory, setInventory] = useState([]);
   const [searchInput, setSearchInput] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showStockInfo, setShowStockInfo] = useState(false);
 
-  useEffect(() => {
-    const loadInventory = async () => {
+  // Helper function to validate date
+  const isValidDate = (dateString) => {
+    if (!dateString) return false;
+    const date = new Date(dateString);
+    const currentDate = new Date();
+    return date instanceof Date && !isNaN(date) && date <= currentDate;
+  };
+
+  const handleSearchInput = async (e) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    
+    if (value.trim()) {
       try {
         setLoading(true);
-        let filtered = await filterInventory(selectedStore, searchInput);
-        setInventory(filtered);
+        const filtered = await filterInventory(selectedStore, value);
+        
+        // Filter out items with invalid dates
+        const validItems = filtered.filter(item => {
+          // Check if createdAt is valid
+          const isDateValid = isValidDate(item.createdAt);
+          
+          // Log invalid dates for debugging
+          if (!isDateValid) {
+            console.warn(`Invalid date found for item ${item.atNo}:`, item.createdAt);
+          }
+          
+          return isDateValid;
+        });
+
+        setInventory(validItems);
         setError(null);
       } catch (err) {
         console.error('Error loading inventory:', err);
@@ -24,16 +49,24 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
       } finally {
         setLoading(false);
       }
-    };
-
-    loadInventory();
-  }, [selectedStore, searchInput]);
-
-  const handleSearchInput = (e) => {
-    const value = e.target.value;
-    setSearchInput(value);
+    } else {
+      setInventory([]);
+    }
   };
 
+  const formatDate = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      if (isValidDate(dateString)) {
+        return date.toLocaleDateString();
+      }
+      return 'Invalid Date';
+    } catch (error) {
+      return 'Invalid Date';
+    }
+  };
+
+  // Rest of the component remains the same...
   const handleDelete = async (itemId) => {
     if (!itemId) {
       setError('Cannot delete item: Invalid item ID');
@@ -43,8 +76,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         await deleteInventoryItem(itemId);
-        const updatedInventory = await filterInventory(selectedStore);
-        setInventory(updatedInventory);
+        setInventory(prev => prev.filter(item => item.id !== itemId));
         if (onInventoryUpdate) onInventoryUpdate();
       } catch (err) {
         console.error('Error deleting item:', err);
@@ -78,7 +110,10 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
         'Date Added'
       ];
 
-      const csvData = inventory.map(item => [
+      // Only export items with valid dates
+      const validInventory = inventory.filter(item => isValidDate(item.createdAt));
+
+      const csvData = validInventory.map(item => [
         item.atNo,
         item.name,
         item.brand,
@@ -93,7 +128,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
         item.ageGroup || '',
         item.gender || '',
         item.notes || '',
-        item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''
+        formatDate(item.createdAt)
       ]);
 
       const csvContent = [
@@ -128,6 +163,14 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
           {[1, 2, 3].map((i) => (
             <div key={i} className={`h-12 w-full rounded ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} animate-pulse`} />
           ))}
+        </div>
+      );
+    }
+
+    if (!searchInput.trim()) {
+      return (
+        <div className={`text-center py-8 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Enter search terms to find inventory items
         </div>
       );
     }
@@ -202,9 +245,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
                   <td className="p-3 text-center">{calculateTotalShoes(item)}</td>
                   <td className="p-3 text-center">{Array.isArray(item.sizes) ? item.sizes.join(', ') : ''}</td>
                   <td className="p-3 text-center">{Array.isArray(item.colors) ? item.colors.join(', ') : ''}</td>
-                  <td className="p-3 text-center">
-                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}
-                  </td>
+                  <td className="p-3 text-center">{formatDate(item.createdAt)}</td>
                   <td className="p-3">
                     <div className="flex justify-center gap-2">
                       <motion.button
@@ -212,7 +253,9 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
                         whileTap={{ scale: 0.9 }}
                         onClick={() => onEditItem({
                           ...item,
-                          date: item.createdAt ? new Date(item.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+                          date: isValidDate(item.createdAt) ? 
+                            new Date(item.createdAt).toISOString().split('T')[0] : 
+                            new Date().toISOString().split('T')[0]
                         })}
                         className="p-1 text-blue-500 hover:text-blue-600"
                         title="Edit item"
@@ -239,6 +282,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     );
   };
 
+
   return (
     <div className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
       <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -261,7 +305,7 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
             Use + to combine search parameters (e.g., @No + Color + Size)
           </p>
         </div>
-
+        
         <div className="flex gap-4">
           <div 
             className="relative" 
