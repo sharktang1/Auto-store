@@ -1,10 +1,8 @@
-// AdminStats.jsx
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import Navbar from '../../components/Navbar';
 import { StatsSelector } from './StatsSelector';
 import { SalesStats } from './SalesStats';
-import InventoryStats from './InventoryStats'; // Changed to default import
+import InventoryStats from './InventoryStats';
 import { StaffStats } from './StaffStats';
 import StoresStats from './StoresStats';
 import { getInitialTheme } from '../../utils/theme';
@@ -32,8 +30,6 @@ const AdminStats = () => {
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
-      <Navbar />
-      
       <div className="container mx-auto px-4 pt-24 pb-8">
         <h1 className={`text-3xl font-bold mb-8 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Statistics & Analytics
