@@ -118,6 +118,7 @@ export const deleteInventoryItem = async (itemId) => {
   }
 };
 
+// Updated filterInventory function with more precise matching
 export const filterInventory = async (storeId, searchTerm) => {
   try {
     let q = collection(db, INVENTORY_COLLECTION);
@@ -132,27 +133,45 @@ export const filterInventory = async (storeId, searchTerm) => {
         id: doc.id,
         ...doc.data()
       }))
-      .filter(isValidItem)  // Filter out invalid items
-      .map(normalizeItem); // Normalize data types
+      .filter(isValidItem)
+      .map(normalizeItem);
 
     if (searchTerm) {
-      const searchParams = searchTerm.toLowerCase().split('+');
+      const searchParams = searchTerm.toLowerCase().split('+').map(param => param.trim()).filter(param => param);
+      
       items = items.filter(item => {
         return searchParams.every(param => {
-          const paramTrimmed = param.trim();
-          if (!paramTrimmed) return true;
-          
+          // Helper function to check exact number matches
+          const isExactNumberMatch = (value, searchValue) => {
+            const numericSearch = parseFloat(searchValue);
+            return !isNaN(numericSearch) && value === numericSearch;
+          };
+
+          // Helper function to check exact size matches
+          const isExactSizeMatch = (sizes, searchValue) => {
+            const numericSearch = parseFloat(searchValue);
+            return sizes.some(size => {
+              const numericSize = parseFloat(size);
+              return !isNaN(numericSearch) && !isNaN(numericSize) && numericSize === numericSearch;
+            });
+          };
+
+          // Check for exact matches in different fields
           return (
-            item.atNo?.toLowerCase().includes(paramTrimmed) ||
-            item.name?.toLowerCase().includes(paramTrimmed) ||
-            item.brand?.toLowerCase().includes(paramTrimmed) ||
-            item.category?.toLowerCase().includes(paramTrimmed) ||
-            item.sizes.some(size => size.toString().includes(paramTrimmed)) ||
-            item.colors.some(color => color.toLowerCase().includes(paramTrimmed)) ||
-            item.date?.includes(paramTrimmed) ||
-            item.time?.includes(paramTrimmed) ||
-            item.gender?.toLowerCase().includes(paramTrimmed) ||
-            item.ageGroup?.toLowerCase().includes(paramTrimmed)
+            // Exact match for @No
+            (item.atNo?.toLowerCase() === param) ||
+            // Exact match for size
+            (isExactSizeMatch(item.sizes, param)) ||
+            // Exact match for color
+            (item.colors.some(color => color.toLowerCase() === param)) ||
+            // Partial matches for text fields
+            (item.name?.toLowerCase().includes(param)) ||
+            (item.brand?.toLowerCase().includes(param)) ||
+            (item.category?.toLowerCase().includes(param)) ||
+            (item.date?.includes(param)) ||
+            (item.time?.includes(param)) ||
+            (item.gender?.toLowerCase() === param) ||
+            (item.ageGroup?.toLowerCase() === param)
           );
         });
       });

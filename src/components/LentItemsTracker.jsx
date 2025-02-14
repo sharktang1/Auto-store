@@ -10,7 +10,9 @@ import {
   Store,
   Users,
   Bell,
-  Clock
+  Clock,
+  RotateCcw,
+  RefreshCw
 } from 'lucide-react';
 import { 
   collection, 
@@ -19,7 +21,8 @@ import {
   onSnapshot,
   updateDoc,
   doc,
-  getDoc
+  getDoc,
+  runTransaction
 } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../libs/firebase-config';
@@ -30,13 +33,19 @@ const LentItemsTracker = ({ isDarkMode }) => {
   const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('lent');
   const [staffNames, setStaffNames] = useState({});
+  const [isReturning, setIsReturning] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     // Expose lent items data globally
     window.getLentItems = () => lentItems;
 
-    // Fetch lent items
-    const lentQuery = query(collection(db, 'lentshoes'), where('status', '==', 'lent'));
+    // Fetch only items with 'lent' status
+    const lentQuery = query(
+      collection(db, 'lentshoes'), 
+      where('status', '==', 'lent')
+    );
+    
     const unsubscribeLent = onSnapshot(lentQuery, (snapshot) => {
       const items = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -57,7 +66,11 @@ const LentItemsTracker = ({ isDarkMode }) => {
     });
 
     // Fetch notifications
-    const notificationsQuery = query(collection(db, 'notifications'), where('status', '==', 'pending'));
+    const notificationsQuery = query(
+      collection(db, 'notifications'), 
+      where('status', '==', 'pending')
+    );
+    
     const unsubscribeNotifications = onSnapshot(notificationsQuery, async (snapshot) => {
       const notifs = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -111,10 +124,64 @@ const LentItemsTracker = ({ isDarkMode }) => {
         status: 'updated',
         processedAt: new Date().toISOString(),
       });
+      
+      // Update local state to keep the item visible after status change
+      setLentItems(prevItems => 
+        prevItems.map(item => 
+          item.id === itemId 
+            ? { ...item, status: 'updated', processedAt: new Date().toISOString() }
+            : item
+        )
+      );
+      
       toast.success('Item marked as updated!');
     } catch (error) {
       console.error('Error updating item:', error);
       toast.error('Failed to update item');
+    }
+  };
+
+  const handleReturnItem = async (item) => {
+    if (isReturning) return;
+    setIsReturning(true);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        // Get the inventory document
+        const inventoryRef = doc(db, 'inventory', item.itemDetails.id);
+        const inventoryDoc = await transaction.get(inventoryRef);
+
+        if (!inventoryDoc.exists()) {
+          throw new Error('Inventory item not found');
+        }
+
+        // Calculate new stock based on the type and quantity
+        const currentStock = inventoryDoc.data().stock || 0;
+        const newStock = currentStock + item.quantity;
+
+        // Update the inventory document
+        transaction.update(inventoryRef, {
+          stock: newStock,
+          lastUpdated: new Date().toISOString()
+        });
+
+        // Update the lent item status
+        const lentItemRef = doc(db, 'lentshoes', item.id);
+        transaction.update(lentItemRef, {
+          status: 'returned',
+          returnDate: new Date().toISOString()
+        });
+      });
+
+      // Remove the returned item from local state
+      setLentItems(prevItems => prevItems.filter(i => i.id !== item.id));
+      
+      toast.success('Item successfully returned!');
+    } catch (error) {
+      console.error('Error returning item:', error);
+      toast.error('Failed to return item: ' + error.message);
+    } finally {
+      setIsReturning(false);
     }
   };
 
@@ -143,6 +210,157 @@ const LentItemsTracker = ({ isDarkMode }) => {
           {children}
         </span>
       </div>
+    </div>
+  );
+
+  const renderItemActions = (item) => (
+    <div className="flex space-x-2">
+      <button
+        onClick={() => handleUpdateItem(item.id)}
+        disabled={isUpdating}
+        className={`flex items-center space-x-2 px-3 py-1.5 ${
+          isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+        } text-white rounded-md text-sm transition-colors ${
+          isUpdating ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
+      >
+        <RefreshCw size={16} className={isUpdating ? 'animate-spin' : ''} />
+        <span>{isUpdating ? 'Updating...' : 'Mark Updated'}</span>
+      </button>
+      <button
+        onClick={() => handleReturnItem(item)}
+        disabled={isReturning}
+        className={`flex items-center space-x-2 px-3 py-1.5 ${
+          isDarkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'
+        } text-white rounded-md text-sm transition-colors ${
+          isReturning ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
+      >
+        <RotateCcw size={16} className={isReturning ? 'animate-spin' : ''} />
+        <span>{isReturning ? 'Returning...' : 'Return Item'}</span>
+      </button>
+    </div>
+  );
+
+  const renderLentItems = () => (
+    <div className="space-y-6">
+      {lentItems.map(item => (
+        <div 
+          key={item.id} 
+          className={`p-4 rounded-lg ${
+            isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
+          }`}
+        >
+          <div className="space-y-4">
+            <div className="flex justify-between items-start">
+              <h3 className={`text-lg font-medium ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>
+                {item.itemDetails.name} - {item.itemDetails.brand}
+              </h3>
+              {renderItemActions(item)}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ItemDetailSection label="AT Number" icon={Tag}>
+                {item.itemDetails.atNo || 'N/A'}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="Category" icon={Package}>
+                {item.itemDetails.category || 'N/A'}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="From Store" icon={Store}>
+                {item.fromStoreId}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="To Store" icon={Store}>
+                {item.toStoreId}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="Quantity & Type" icon={Package}>
+                {item.quantity} {item.type}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="Lent Date" icon={Calendar}>
+                {new Date(item.lentDate).toLocaleString()}
+              </ItemDetailSection>
+            </div>
+
+            {item.notes && (
+              <ItemDetailSection label="Notes" className="col-span-full">
+                {item.notes}
+              </ItemDetailSection>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderNotifications = () => (
+    <div className="space-y-6">
+      {notifications.map(notification => (
+        <div 
+          key={notification.id} 
+          className={`p-4 rounded-lg ${
+            isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
+          }`}
+        >
+          <div className="space-y-4">
+            <div className="flex justify-between items-start">
+              <h3 className={`text-lg font-medium ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>
+                Shoe Request: {notification.shoeName}
+              </h3>
+              <button
+                onClick={() => handleUpdateNotification(notification.id)}
+                className={`flex items-center space-x-2 px-3 py-1.5 ${
+                  isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                } text-white rounded-md text-sm transition-colors`}
+              >
+                <CheckCircle size={16} />
+                <span>Process Request</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ItemDetailSection label="Requested Sizes" icon={Tag}>
+                {notification.size}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="Quantity" icon={Package}>
+                {notification.quantity}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="Staff Member" icon={Users}>
+                {staffNames[notification.staffId] || 'Loading...'}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="Customer Contact" icon={Users}>
+                {notification.customerContact || 'N/A'}
+              </ItemDetailSection>
+
+              <ItemDetailSection label="Request Date" icon={Calendar}>
+                {notification.timestamp.toDate().toLocaleString()}
+              </ItemDetailSection>
+
+              {notification.urgency && (
+                <ItemDetailSection label="Urgency" icon={Clock}>
+                  {notification.urgency}
+                </ItemDetailSection>
+              )}
+            </div>
+
+            {notification.notes && (
+              <ItemDetailSection label="Notes" className="col-span-full">
+                {notification.notes}
+              </ItemDetailSection>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 
@@ -247,67 +465,7 @@ const LentItemsTracker = ({ isDarkMode }) => {
                     No pending lent items
                   </p>
                 ) : (
-                  <div className="space-y-6">
-                    {lentItems.map(item => (
-                      <div 
-                        key={item.id} 
-                        className={`p-4 rounded-lg ${
-                          isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
-                        }`}
-                      >
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-start">
-                            <h3 className={`text-lg font-medium ${
-                              isDarkMode ? 'text-white' : 'text-gray-900'
-                            }`}>
-                              {item.itemDetails.name} - {item.itemDetails.brand}
-                            </h3>
-                            <button
-                              onClick={() => handleUpdateItem(item.id)}
-                              className={`flex items-center space-x-2 px-3 py-1.5 ${
-                                isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
-                              } text-white rounded-md text-sm transition-colors`}
-                            >
-                              <CheckCircle size={16} />
-                              <span>Mark as Updated</span>
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <ItemDetailSection label="AT Number" icon={Tag}>
-                              {item.itemDetails.atNo || 'N/A'}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="Category" icon={Package}>
-                              {item.itemDetails.category || 'N/A'}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="From Store" icon={Store}>
-                              {item.fromStoreId}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="To Store" icon={Store}>
-                              {item.toStoreId}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="Quantity & Type" icon={Package}>
-                              {item.quantity} {item.type}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="Lent Date" icon={Calendar}>
-                              {new Date(item.lentDate).toLocaleString()}
-                            </ItemDetailSection>
-                          </div>
-
-                          {item.notes && (
-                            <ItemDetailSection label="Notes" className="col-span-full">
-                              {item.notes}
-                            </ItemDetailSection>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  renderLentItems()
                 )
               ) : (
                 notifications.length === 0 ? (
@@ -317,69 +475,7 @@ const LentItemsTracker = ({ isDarkMode }) => {
                     No pending requests
                   </p>
                 ) : (
-                  <div className="space-y-6">
-                    {notifications.map(notification => (
-                      <div 
-                        key={notification.id} 
-                        className={`p-4 rounded-lg ${
-                          isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
-                        }`}
-                      >
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-start">
-                            <h3 className={`text-lg font-medium ${
-                              isDarkMode ? 'text-white' : 'text-gray-900'
-                            }`}>
-                              Shoe Request: {notification.shoeName}
-                            </h3>
-                            <button
-                              onClick={() => handleUpdateNotification(notification.id)}
-                              className={`flex items-center space-x-2 px-3 py-1.5 ${
-                                isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
-                              } text-white rounded-md text-sm transition-colors`}
-                            >
-                              <CheckCircle size={16} />
-                              <span>Process Request</span>
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <ItemDetailSection label="Requested Sizes" icon={Tag}>
-                              {notification.size}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="Quantity" icon={Package}>
-                              {notification.quantity}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="Staff Member" icon={Users}>
-                              {staffNames[notification.staffId] || 'Loading...'}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="Customer Contact" icon={Users}>
-                              {notification.customerContact || 'N/A'}
-                            </ItemDetailSection>
-
-                            <ItemDetailSection label="Request Date" icon={Calendar}>
-                              {notification.timestamp.toDate().toLocaleString()}
-                            </ItemDetailSection>
-
-                            {notification.urgency && (
-                              <ItemDetailSection label="Urgency" icon={Clock}>
-                                {notification.urgency}
-                              </ItemDetailSection>
-                            )}
-                          </div>
-
-                          {notification.notes && (
-                            <ItemDetailSection label="Notes" className="col-span-full">
-                              {notification.notes}
-                            </ItemDetailSection>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  renderNotifications()
                 )
               )}
             </motion.div>

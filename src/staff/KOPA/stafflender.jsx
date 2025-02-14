@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Store, Search, Send, AlertCircle } from 'lucide-react';
+import { Store, Search, Send, AlertCircle, RotateCcw, Info } from 'lucide-react';
 import { collection, getDocs, query, where, onSnapshot, getDoc, addDoc, updateDoc, doc as firestoreDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../libs/firebase-config';
@@ -25,6 +25,7 @@ const StaffLender = () => {
   const [lendType, setLendType] = useState('pair');
   const [lendQuantity, setLendQuantity] = useState(1);
   const [showLendModal, setShowLendModal] = useState(false);
+  
 
   useEffect(() => {
     let unsubscribeTheme = initializeThemeListener(setIsDarkMode);

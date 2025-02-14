@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Calendar, Download, Info } from 'lucide-react';
+import { Search, Calendar, Download, Info, AlertTriangle } from 'lucide-react';
 import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../libs/firebase-config';
 import { toast } from 'react-toastify';
@@ -14,10 +14,10 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
   const [loading, setLoading] = useState(true);
   const [totalSales, setTotalSales] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [totalPending, setTotalPending] = useState(0);
+  const [selectedProductData, setSelectedProductData] = useState(null);
+  const [isProductPopupOpen, setIsProductPopupOpen] = useState(false);
 
-  // Fetch sales data
   useEffect(() => {
     if (!storeData.id || !['staff', 'staff-admin'].includes(userRole)) {
       console.error('Missing required parameters or unauthorized:', { storeData, userRole });
@@ -45,12 +45,11 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
           }));
           
           salesData.sort((a, b) => {
-            const timeA = a.serverTimestamp || a.timestamp || new Date(0);
-            const timeB = b.serverTimestamp || b.timestamp || new Date(0);
-            return timeB - timeA;
+            const timeA = b.serverTimestamp || b.timestamp || new Date(0);
+            const timeB = a.serverTimestamp || a.timestamp || new Date(0);
+            return timeA - timeB;
           });
           
-          console.log('Fetched sales data:', salesData);
           setSales(salesData);
           setLoading(false);
         } catch (error) {
@@ -68,8 +67,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
 
     return () => unsubscribe();
   }, [storeData.id, userRole]);
-  
-  // Filter sales based on search term and date
+
   useEffect(() => {
     let filtered = [...sales];
 
@@ -97,19 +95,26 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
     
     const totals = filtered.reduce((acc, sale) => ({
       count: acc.count + 1,
-      revenue: acc.revenue + (sale.total || 0)
-    }), { count: 0, revenue: 0 });
+      revenue: acc.revenue + (sale.total || 0),
+      pending: acc.pending + (sale.remainingAmount || 0)
+    }), { count: 0, revenue: 0, pending: 0 });
 
     setTotalSales(totals.count);
     setTotalRevenue(totals.revenue);
+    setTotalPending(totals.pending);
   }, [sales, searchTerm, selectedDate]);
 
   const fetchProductDetails = async (productId) => {
+    if (!productId) {
+      toast.error('Product ID not found');
+      return;
+    }
+    
     try {
       const productDoc = await getDoc(doc(db, 'inventory', productId));
       if (productDoc.exists()) {
-        setSelectedProduct(productDoc.data());
-        setIsPopupOpen(true);
+        setSelectedProductData(productDoc.data());
+        setIsProductPopupOpen(true);
       } else {
         toast.error('Product details not found');
       }
@@ -133,8 +138,9 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
 
       const headers = [
         'Document ID', 'Date', 'Brand', 'Product', 'Size', 'Quantity',
-        'Original Price', 'Discounted Price', 'Total', 'Customer', 'Phone',
-        'Payments', 'Discount Amount', 'Discount Percentage', 'Is Haggled'
+        'Original Price', 'Discounted Price', 'Total', 'Total Paid', 'Remaining Amount',
+        'Customer', 'Phone', 'Payments', 'Payment Status', 'Discount Amount',
+        'Discount Percentage', 'Is Haggled'
       ];
       
       const csvData = filteredSales.map(sale => [
@@ -147,9 +153,12 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         sale.originalPrice || 0,
         sale.price || 0,
         sale.total?.toFixed(2) || '0.00',
+        sale.totalPaid?.toFixed(2) || '0.00',
+        sale.remainingAmount?.toFixed(2) || '0.00',
         sale.customerName || 'N/A',
         sale.customerPhone || 'N/A',
         formatPayments(sale.payments),
+        sale.paymentStatus || 'completed',
         sale.discountAmount || 0,
         sale.discountPercentage || 0,
         sale.isHaggled ? 'Yes' : 'No'
@@ -185,7 +194,6 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
 
   return (
     <div className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
-      {/* Search and Filter Controls */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="flex-1">
           <div className={`relative flex items-center ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
@@ -231,8 +239,7 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
             Total Sales
@@ -249,9 +256,16 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
             KES {totalRevenue.toFixed(2)}
           </p>
         </div>
+        <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-red-900' : 'bg-red-50'}`}>
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-red-100' : 'text-red-700'}`}>
+            Pending Payments
+          </h3>
+          <p className={`text-2xl font-bold ${isDarkMode ? 'text-red-100' : 'text-red-700'}`}>
+            KES {totalPending.toFixed(2)}
+          </p>
+        </div>
       </div>
 
-      {/* Sales Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -265,17 +279,19 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
               <th className="p-3 text-right">Original Price</th>
               <th className="p-3 text-right">Discounted Price</th>
               <th className="p-3 text-right">Total</th>
+              <th className="p-3 text-right">Paid</th>
+              <th className="p-3 text-right">Remaining</th>
               <th className="p-3 text-left">Customer</th>
               <th className="p-3 text-left">Phone</th>
               <th className="p-3 text-left">Payments</th>
-              <th className="p-3 text-center">Haggled</th>
+              <th className="p-3 text-center">Status</th>
               <th className="p-3 text-center">Info</th>
             </tr>
           </thead>
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan={14} className="text-center py-4">
+                <td colSpan={16} className="text-center py-4">
                   <p className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
                     No sales records found
                   </p>
@@ -288,35 +304,85 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className={`border-t ${
-                    isDarkMode ? 'border-gray-700 text-gray-200' : 'border-gray-200 text-gray-700'
+                    isDarkMode ? 'border-gray-700' : 'border-gray-200'
+                  } ${
+                    sale.paymentStatus === 'partial' 
+                      ? isDarkMode ? 'bg-red-900/20' : 'bg-red-50' 
+                      : ''
                   }`}
                 >
-                  <td className="p-3">{sale.documentId}</td>
-                  <td className="p-3">
+                  <td className={`p-3 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {sale.documentId}
+                  </td>
+                  <td className={`p-3 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                     {sale.timestamp?.toLocaleDateString()}
                   </td>
-                  <td className="p-3">{sale.brand}</td>
-                  <td className="p-3">{sale.productName}</td>
-                  <td className="p-3 text-center">{sale.size}</td>
-                  <td className="p-3 text-right">{sale.quantity}</td>
-                  <td className="p-3 text-right">KES {sale.originalPrice?.toFixed(2)}</td>
-                  <td className="p-3 text-right">KES {sale.price?.toFixed(2)}</td>
-                  <td className="p-3 text-right">KES {sale.total?.toFixed(2)}</td>
-                  <td className="p-3">{sale.customerName || 'N/A'}</td>
-                  <td className="p-3">{sale.customerPhone || 'N/A'}</td>
-                  <td className="p-3">{formatPayments(sale.payments)}</td>
-                  <td className="p-3 text-center">
-                    {sale.isHaggled ? '✓' : '-'}
+                  <td className={`p-3 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {sale.brand}
+                  </td>
+                  <td className={`p-3 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {sale.productName}
+                  </td>
+                  <td className={`p-3 text-center ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {sale.size}
+                  </td>
+                  <td className={`p-3 text-right ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {sale.quantity}
+                  </td>
+                  <td className={`p-3 text-right ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    KES {sale.originalPrice?.toFixed(2)}
+                  </td>
+                  <td className={`p-3 text-right ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    KES {sale.price?.toFixed(2)}
+                  </td>
+                  <td className={`p-3 text-right font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    KES {sale.total?.toFixed(2)}
+                  </td>
+                  <td className={`p-3 text-right ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    KES {sale.totalPaid?.toFixed(2)}
+                  </td>
+                  <td className={`p-3 text-right font-medium ${
+                    sale.remainingAmount > 0 
+                      ? 'text-red-500' 
+                      : isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                  }`}>
+                    {sale.remainingAmount > 0 ? `KES ${sale.remainingAmount?.toFixed(2)}` : '-'}
+                  </td>
+                  <td className={`p-3 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {sale.customerName || '-'}
+                  </td>
+                  <td className={`p-3 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {sale.customerPhone || '-'}
+                  </td>
+                  <td className={`p-3 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {formatPayments(sale.payments)}
                   </td>
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() => fetchProductDetails(sale.productId)}
-                      className={`hover:opacity-75 transition-opacity ${
-                        isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                      }`}
-                    >
-                      <Info size={18} />
-                    </button>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      sale.paymentStatus === 'partial'
+                        ? isDarkMode ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800'
+                        : isDarkMode ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800'
+                    }`}>
+                      {sale.paymentStatus === 'partial' ? (
+                        <AlertTriangle className="w-3 h-3 mr-1" />
+                      ) : null}
+                      {sale.paymentStatus === 'partial' ? 'Partial' : 'Completed'}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    {sale.productId && (
+                      <button
+                        onClick={() => fetchProductDetails(sale.productId)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          isDarkMode 
+                            ? 'hover:bg-gray-700 text-gray-200' 
+                            : 'hover:bg-gray-100 text-gray-700'
+                        }`}
+                        title="View Product Details"
+                      >
+                        <Info size={18} />
+                      </button>
+                    )}
                   </td>
                 </motion.tr>
               ))
@@ -325,10 +391,14 @@ const ViewSales = ({ storeData, userId, userRole, isDarkMode }) => {
         </table>
       </div>
 
+      {/* Product Info Popup */}
       <ProductInfoPopup
-        isOpen={isPopupOpen}
-        onClose={() => setIsPopupOpen(false)}
-        productData={selectedProduct}
+        isOpen={isProductPopupOpen}
+        onClose={() => {
+          setIsProductPopupOpen(false);
+          setSelectedProductData(null);
+        }}
+        productData={selectedProductData}
         isDarkMode={isDarkMode}
       />
     </div>

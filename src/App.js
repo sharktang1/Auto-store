@@ -20,6 +20,7 @@ import AdminInventory from './admin/inventory/AdminInventory';
 import AdminSales from './admin/sales/AdminSales';
 import AdminStats from './admin/stats/AdminStats';
 import AdminStaff from './admin/staff/AdminStaff';
+import AdminRestock from './admin/restock/AdminRestock'; // New import
 
 // Staff route imports
 import StaffInventory from './staff/inventory/StaffInventory';
@@ -242,6 +243,7 @@ function App() {
                     <Route path="sales" element={<AdminSales />} />
                     <Route path="stats" element={<AdminStats />} />
                     <Route path="staff" element={<AdminStaff />} />
+                    <Route path="restock" element={<AdminRestock />} /> {/* New route */}
                   </Routes>
                 </AdminLayout>
               </ProtectedRoute>

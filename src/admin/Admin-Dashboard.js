@@ -6,7 +6,8 @@ import {
   Users, 
   TrendingUp, 
   File,
-  RefreshCw
+  RefreshCw,
+  ShoppingBag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -110,7 +111,8 @@ const AdminDashboard = () => {
     totalInventory: 0,
     totalSales: 0,
     activeStaff: 0,
-    monthlyGrowth: '+0%'
+    monthlyGrowth: '+0%',
+    pendingRestocks: 0
   });
 
   const navigate = useNavigate();
@@ -123,22 +125,30 @@ const AdminDashboard = () => {
   useEffect(() => {
     const fetchDashboardStats = async () => {
       try {
+        // Query for total inventory
         const inventoryQuery = query(collection(db, 'inventory'));
         const inventorySnapshot = await getCountFromServer(inventoryQuery);
         
+        // Query for sales data
         const salesQuery = query(collection(db, 'sales'));
         const salesSnapshot = await getCountFromServer(salesQuery);
         const salesData = await getDocs(salesQuery);
         const totalSalesAmount = salesData.docs.reduce((sum, doc) => sum + (doc.data().total || 0), 0);
 
+        // Query for active staff members
         const staffQuery = query(collection(db, 'users'), where('role', 'in', ['staff', 'staff-admin']));
         const staffSnapshot = await getCountFromServer(staffQuery);
+
+        // Query for items needing restock (stock < 10)
+        const restockQuery = query(collection(db, 'inventory'), where('stock', '<', 10));
+        const restockSnapshot = await getCountFromServer(restockQuery);
 
         setDashboardStats({
           totalInventory: inventorySnapshot.data().count,
           totalSales: totalSalesAmount,
           activeStaff: staffSnapshot.data().count,
-          monthlyGrowth: '+15%'
+          monthlyGrowth: '+15%',
+          pendingRestocks: restockSnapshot.data().count
         });
       } catch (error) {
         console.error('Error fetching dashboard stats:', error);
@@ -148,6 +158,7 @@ const AdminDashboard = () => {
 
     fetchDashboardStats();
 
+    // Listen for returns updates
     const returnsQuery = query(
       collection(db, 'returns'), 
       where('status', '==', 'processed')
@@ -227,7 +238,7 @@ const AdminDashboard = () => {
           Admin Dashboard Overview
         </h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <DashboardCard
             title="Total Inventory"
             value={dashboardStats.totalInventory.toString().padStart(4, '0')}
@@ -256,6 +267,13 @@ const AdminDashboard = () => {
             color="bg-orange-500"
             to="/admin/stats"
             trend={dashboardStats.monthlyGrowth}
+          />
+          <DashboardCard
+            title="Needs Restock"
+            value={dashboardStats.pendingRestocks.toString().padStart(2, '0')}
+            icon={ShoppingBag}
+            color="bg-red-500"
+            to="/admin/restock"
           />
         </div>
 

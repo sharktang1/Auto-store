@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Edit, Trash2, AlertCircle, Info, Download } from 'lucide-react';
 import { filterInventory, deleteInventoryItem } from '../../utils/admin-inventory';
@@ -18,21 +18,17 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     return date instanceof Date && !isNaN(date) && date <= currentDate;
   };
 
-  const handleSearchInput = async (e) => {
-    const value = e.target.value;
-    setSearchInput(value);
-    
-    if (value.trim()) {
+  // Perform search
+  const performSearch = async (searchValue, store) => {
+    if (searchValue.trim()) {
       try {
         setLoading(true);
-        const filtered = await filterInventory(selectedStore, value);
+        const filtered = await filterInventory(store, searchValue);
         
         // Filter out items with invalid dates
         const validItems = filtered.filter(item => {
-          // Check if createdAt is valid
           const isDateValid = isValidDate(item.createdAt);
           
-          // Log invalid dates for debugging
           if (!isDateValid) {
             console.warn(`Invalid date found for item ${item.atNo}:`, item.createdAt);
           }
@@ -54,6 +50,20 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     }
   };
 
+  // Handle search input changes
+  const handleSearchInput = async (e) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    await performSearch(value, selectedStore);
+  };
+
+  // Watch for store changes and refresh search if needed
+  useEffect(() => {
+    if (searchInput.trim()) {
+      performSearch(searchInput, selectedStore);
+    }
+  }, [selectedStore]);
+
   const formatDate = (dateString) => {
     try {
       const date = new Date(dateString);
@@ -66,7 +76,6 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
     }
   };
 
-  // Rest of the component remains the same...
   const handleDelete = async (itemId) => {
     if (!itemId) {
       setError('Cannot delete item: Invalid item ID');
@@ -110,7 +119,6 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
         'Date Added'
       ];
 
-      // Only export items with valid dates
       const validInventory = inventory.filter(item => isValidDate(item.createdAt));
 
       const csvData = validInventory.map(item => [
@@ -281,7 +289,6 @@ const ViewInventory = ({ onEditItem, isDarkMode, selectedStore, onInventoryUpdat
       </div>
     );
   };
-
 
   return (
     <div className={`rounded-lg shadow-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
